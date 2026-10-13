@@ -323,15 +323,51 @@ async function preparaPdf() {
     }
     IMP.descrizione = 'PDF di ' + pdf.numPages + (pdf.numPages === 1 ? ' pagina' : ' pagine') + ', letto come IMMAGINE' + (IMP.forzaImmagini ? '' : ' (' + q.motivo + ')')
   } else {
-    // una parte per gruppo di pagine, con il segno di pagina
-    var righe = []
-    pagine.forEach(function (p, i) { righe.push('=== PAGINA ' + (i + 1) + ' di ' + pagine.length + ' ==='); righe = righe.concat(p) })
-    IMP.parti = dividiTesto(righe, null).map(function (t, i, a) {
+    // Le parti si fanno per NUMERO DI PREZZI, non solo per lunghezza: una
+    // pagina a griglia (Agrop) ha 100 e più prezzi in poco testo, e una
+    // risposta troppo lunga l'AI la riassume. Massimo ~70 prezzi per parte.
+    IMP.parti = partiPerPrezzi(pagine).map(function (t, i, a) {
       return { pagine: 'parte ' + (i + 1) + ' di ' + a.length, contenuto: [{ tipo: 'testo', testo: t }] }
     })
     IMP.descrizione = 'PDF di ' + pdf.numPages + (pdf.numPages === 1 ? ' pagina' : ' pagine') + ', letto come TESTO'
   }
   passoPronto()
+}
+
+var PREZZI_PER_PARTE = 110
+function contaPrezzi(t) { return (String(t).match(/\d[\d']*[.,]\d{2}(?![\d])/g) || []).length }
+
+// pagine: array di pagine, ognuna un array di righe. Ritorna i testi delle parti.
+function partiPerPrezzi(pagine) {
+  var parti = [], cur = [], prezzi = 0, car = 0
+  function chiudi() { if (cur.length) parti.push(cur.join('\n')); cur = []; prezzi = 0; car = 0 }
+  pagine.forEach(function (righe, i) {
+    var intestazione = '=== PAGINA ' + (i + 1) + ' di ' + pagine.length + ' ==='
+    var pp = contaPrezzi(righe.join('\n')), cc = righe.join('\n').length
+    if (cur.length && (prezzi + pp > PREZZI_PER_PARTE || car + cc > TESTO_PER_PARTE)) chiudi()
+    if (pp <= PREZZI_PER_PARTE && cc <= TESTO_PER_PARTE) {
+      cur.push(intestazione); cur = cur.concat(righe); prezzi += pp; car += cc
+      return
+    }
+    // pagina troppo piena: si divide per righe. Ogni pezzo ripete le ultime
+    // righe SENZA prezzi che lo precedono (i titoli di colonna: «13 mm 16 mm…»),
+    // altrimenti l'AI non saprebbe a che colonna corrisponde un prezzo.
+    chiudi()
+    var pezzo = [], pzP = 0, pzC = 0, n = 1, titoli = []
+    righe.forEach(function (r) {
+      var p = contaPrezzi(r)
+      if (pezzo.length && (pzP + p > PREZZI_PER_PARTE || pzC + r.length > TESTO_PER_PARTE)) {
+        parti.push(intestazione + ' (pezzo ' + n++ + ')\n' + pezzo.join('\n'))
+        pezzo = titoli.slice(); pzP = 0; pzC = pezzo.join('\n').length
+        if (pezzo.length) pezzo.unshift('(titoli ripetuti dalla parte sopra:)')
+      }
+      pezzo.push(r); pzP += p; pzC += r.length
+      if (p === 0 && r.trim()) { titoli.push(r); if (titoli.length > 4) titoli.shift() }
+    })
+    if (pezzo.length) parti.push(intestazione + ' (pezzo ' + n + ')\n' + pezzo.join('\n'))
+  })
+  chiudi()
+  return parti
 }
 
 // Ricostruisce le righe del PDF dalle posizioni dei pezzi di testo.
@@ -394,7 +430,9 @@ function stimaCostoUsd(parti) {
   parti.forEach(function (p) {
     input += 2200
     p.contenuto.forEach(function (c) {
-      if (c.tipo === 'testo') { input += c.testo.length / 3.2; output += c.testo.length / 3.5 }
+      // misurato sulle letture vere (ottobre 2026): ~1 token scritto per carattere
+      // letto, e ~35 token per ogni prezzo nelle griglie fitte
+      if (c.tipo === 'testo') { input += c.testo.length / 3.2; output += Math.max(c.testo.length * 1.1, contaPrezzi(c.testo) * 35) }
       else { input += 3600; output += 1800 }
     })
     output += 600
@@ -489,9 +527,19 @@ function dopoLettura() {
     el('i-nuovo').addEventListener('click', function () { nuovoImport(); passo1() })
     return
   }
+  // Regola fissa (non dipende dall'AI): nel testo del documento, un codice
+  // preceduto da «VAR» è una variante, anche se l'AI ha tolto la scritta.
+  var testoDoc = IMP.parti.map(function (p) {
+    return p.contenuto.filter(function (c) { return c.tipo === 'testo' }).map(function (c) { return c.testo }).join('\n')
+  }).join('\n')
   IMP.righe = RFC.preparaRighe(IMP.letto.righe).map(function (r, i) {
     r.i = i; r.articoloId = null; r.fonte = null; r.sicura = false; r.candidati = []
     r.confermata = false; r.ignorata = false; r.fattoreManuale = null
+    if (!r.variante && r.codice && testoDoc &&
+        new RegExp('(^|[\\s|])VAR[\\s|]+' + r.codice.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w.])', 'm').test(testoDoc)) {
+      r.variante = true
+      r.info.push('Variante: nel documento la riga è segnata «VAR»')
+    }
     return r
   })
   IMP.ignorate = IMP.letto.pagine_ignorate || ''
