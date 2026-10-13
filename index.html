@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>CT Radar Fornitori — Carpenteria Ticinese</title>
+  <meta name="robots" content="noindex" />
+  <!-- ?v= : forza il browser a riprendere CSS/JS aggiornati. index.html resta in
+       cache: dopo ogni caricamento su GitHub si apre con Ctrl+F5. -->
+  <link rel="stylesheet" href="css/style.css?v=1" />
+</head>
+<body data-versione="1">
+
+<!-- ═══ LOGIN ═══════════════════════════════════════════════════════════════ -->
+<section id="pagina-login" class="pagina-centro" hidden>
+  <div class="card-login">
+    <div class="logo">📡 <strong>CT Radar Fornitori</strong><span>Carpenteria Ticinese</span></div>
+    <form id="login-form" autocomplete="on">
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="username" required />
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required />
+      <div id="login-banner" aria-live="polite" style="margin-top:12px"></div>
+      <button id="login-btn" type="submit" class="btn btn-primario btn-largo" style="margin-top:8px">Accedi</button>
+      <p class="aiuto" style="margin-top:12px">Si entra con gli stessi email e password delle altre app.</p>
+    </form>
+  </div>
+</section>
+
+<!-- ═══ RUOLO NON AMMESSO ═══════════════════════════════════════════════════ -->
+<section id="pagina-negato" class="pagina-centro" hidden>
+  <div class="card-login">
+    <div class="logo">📡 <strong>CT Radar Fornitori</strong><span>Carpenteria Ticinese</span></div>
+    <div class="banner warn">🔒 Il Radar è riservato a titolare e responsabile.</div>
+    <p id="negato-dettaglio" class="dim"></p>
+    <button type="button" class="btn btn-largo" id="negato-esci">🚪 Esci</button>
+  </div>
+</section>
+
+<!-- ═══ APP ═════════════════════════════════════════════════════════════════ -->
+<section id="pagina-app" hidden>
+  <header id="topbar">
+    <span class="titolo">📡 CT Radar</span>
+    <div class="utente">
+      <span id="topbar-utente"></span>
+      <button type="button" class="btn btn-piccolo" id="btn-esci">🚪 Esci</button>
+    </div>
+  </header>
+
+  <nav id="menu" aria-label="Sezioni">
+    <button type="button" data-vista="cerca">🔍 Cerca</button>
+    <button type="button" data-vista="importa">📥 Importa offerta</button>
+    <button type="button" data-vista="variazioni">📈 Variazioni</button>
+    <button type="button" data-vista="fornitori">🏭 Fornitori</button>
+    <button type="button" data-vista="richieste">📝 Richiesta d'offerta</button>
+    <button type="button" data-vista="impostazioni" id="menu-impostazioni" hidden>⚙️ Impostazioni</button>
+  </nav>
+
+  <main>
+    <div id="banner-globale" aria-live="polite"></div>
+    <div id="vista-cerca" class="vista"></div>
+    <div id="vista-articolo" class="vista" hidden></div>
+    <div id="vista-importa" class="vista" hidden></div>
+    <div id="vista-variazioni" class="vista" hidden></div>
+    <div id="vista-fornitori" class="vista" hidden></div>
+    <div id="vista-fornitore" class="vista" hidden></div>
+    <div id="vista-richieste" class="vista" hidden></div>
+    <div id="vista-impostazioni" class="vista" hidden></div>
+  </main>
+</section>
+
+<div id="finestre"></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- Supabase (versione fissa). SheetJS, pdf.js e Chart.js si caricano solo
+     quando servono (vedi caricaLibreria in base.js). -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/calcolo.js?v=1"></script>
+<script src="js/base.js?v=1"></script>
+<script src="js/cerca.js?v=1"></script>
+<script src="js/fornitori.js?v=1"></script>
+<script src="js/importa.js?v=1"></script>
+<script src="js/variazioni.js?v=1"></script>
+<script src="js/richieste.js?v=1"></script>
+<script src="js/impostazioni.js?v=1"></script>
+<script src="js/avvio.js?v=1"></script>
+</body>
+</html>
