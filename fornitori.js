@@ -243,7 +243,7 @@ async function disegnaFornitore(param) {
       '</div>' : banner('warn', 'Il contatto della Rubrica non si legge (permessi o contatto archiviato).')) +
     '</div>' +
 
-    '<div class="scheda"><h2>📡 Dati d\'acquisto</h2>' +
+    '<div class="scheda"><h2>🛒 Dati d\'acquisto</h2>' +
       '<fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:600">Attività (più di una se serve)</legend>' +
         '<div class="gruppo-btn">' + servizi.map(function (c) {
           var on = r && (r.attivita || []).indexOf(c.nome) >= 0

@@ -1,5 +1,5 @@
-// Fornitori (ex Radar Fornitori) — avvio.js
-// Collega i pulsanti fissi e decide la prima pagina (login o Fornitori).
+// Acquisti (ex Radar, ex Fornitori) — avvio.js
+// Collega i pulsanti fissi e decide la prima pagina (login o Acquisti).
 
 'use strict'
 

@@ -143,7 +143,7 @@ async function spazio() {
     (pct > 80 ? banner('warn', 'Lo spazio sta finendo: oltre 1 GB serve il piano a pagamento di Supabase.') : '') +
     '<div class="tabella-wrap" style="margin-top:10px"><table class="tab"><thead><tr><th>Bucket</th><th class="num">File</th><th class="num">Spazio</th></tr></thead><tbody>' +
     righe.map(function (x) {
-      return '<tr><td>' + esc(x.bucket) + (/^rf-/.test(x.bucket) ? ' ' + tag('info', '📡', 'Fornitori') : '') + '</td><td class="num">' + x.file + '</td><td class="num">' + mb(x.byte) + '</td></tr>'
+      return '<tr><td>' + esc(x.bucket) + (/^rf-/.test(x.bucket) ? ' ' + tag('info', '🛒', 'Acquisti') : '') + '</td><td class="num">' + x.file + '</td><td class="num">' + mb(x.byte) + '</td></tr>'
     }).join('') + '</tbody></table></div>')
   el('im-spazio').classList.remove('caricamento')
 }

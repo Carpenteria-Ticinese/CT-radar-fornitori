@@ -1,6 +1,6 @@
 {
-  "name": "Fornitori · Carpenteria Ticinese",
-  "short_name": "Fornitori",
+  "name": "Acquisti · Carpenteria Ticinese",
+  "short_name": "Acquisti",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

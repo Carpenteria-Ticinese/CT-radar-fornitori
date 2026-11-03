@@ -1,4 +1,4 @@
-// Fornitori (ex Radar Fornitori) — base.js
+// Acquisti (ex Radar, ex Fornitori) — base.js
 // Configurazione, login, ruolo, caricamento dei dati, attrezzi comuni
 // (finestre, avvisi, menu con ricerca, Worker, foto, file).
 //
@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 2
+var APP_VERSIONE = 3
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
