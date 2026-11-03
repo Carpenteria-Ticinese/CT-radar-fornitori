@@ -551,8 +551,8 @@ async function esportaListino() {
       ['3. Nella cella del prezzo scrivi questa formula (poi trascinala in giù):'],
       ['=SE.ERRORE(INDICE(LISTINO_RADAR!D:D;CONFRONTA(A2;LISTINO_RADAR!A:A;0));"MANCA")'],
       [''],
-      ['«MANCA» = il codice non c\'è nel Radar, oppure non ha ancora un prezzo.'],
-      ['Il prezzo è in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari e variazioni di oggi. Gli EUR sono convertiti col cambio delle Impostazioni del Radar.'],
+      ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo.'],
+      ['Il prezzo è in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari e variazioni di oggi. Gli EUR sono convertiti col cambio delle Impostazioni.'],
       ['Esportato il ' + RFC.fmtData(RFC.oggiISO()) + ' · cambio EUR→CHF ' + RF.imp.cambio_eur_chf + ' del ' + RFC.fmtData(RF.imp.cambio_data)],
       ['Ogni volta che i prezzi cambiano, esporta di nuovo e sostituisci il foglio LISTINO_RADAR.']
     ])

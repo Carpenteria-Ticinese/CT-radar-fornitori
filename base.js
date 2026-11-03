@@ -1,4 +1,4 @@
-// CT Radar Fornitori — base.js
+// Fornitori (ex Radar Fornitori) — base.js
 // Configurazione, login, ruolo, caricamento dei dati, attrezzi comuni
 // (finestre, avvisi, menu con ricerca, Worker, foto, file).
 //
@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 1
+var APP_VERSIONE = 2
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -57,6 +57,7 @@ function avvisa(tipo, testo) {
 }
 var _toastTimer = null
 function toast(testo) {
+  if (/salvat[oae]\b/i.test(testo) && !/non salvat/i.test(testo)) RF.modificato = false
   var t = el('toast')
   t.textContent = testo
   t.hidden = false
@@ -109,6 +110,7 @@ function mostraLogin(msg) {
 async function login(ev) {
   ev.preventDefault()
   var btn = el('login-btn')
+  if (btn.disabled) return           // Invio premuto due volte: un solo accesso
   btn.disabled = true; btn.textContent = 'Accesso…'
   html('login-banner', '')
   try {
@@ -121,7 +123,7 @@ async function login(ev) {
     html('login-banner', banner('err', /invalid login|invalid_credentials/i.test(m)
       ? 'Email o password non corretti.' : esc('Accesso non riuscito: ' + spiegaErrore(e))))
   } finally {
-    btn.disabled = false; btn.textContent = 'Accedi'
+    btn.disabled = false; btn.textContent = 'Entra'
   }
 }
 
@@ -150,7 +152,8 @@ async function entra() {
   el('menu-impostazioni').hidden = !RF.titolare
   el('topbar-utente').textContent = (s.user.email || '') + ' · ' + RF.ruolo
   mostraPagina('app')
-  html('vista-cerca', '<div class="caricamento">⏳ Carico il Radar…</div>')
+  assicuraGuardia()
+  html('vista-cerca', '<div class="caricamento">⏳ Carico i fornitori…</div>')
   try {
     await caricaBase()
     await Promise.all([caricaArticoli(), caricaFornitori()])
@@ -174,7 +177,7 @@ async function caricaBase(forza) {
   RF.unita = r[1].data || []
   RF.imp = r[2].data
   if (!RF.categorie.length || !RF.imp) {
-    throw new Error('le tabelle del Radar sono vuote: sono stati lanciati i file SQL 03 e 04?')
+    throw new Error('le tabelle dei fornitori sono vuote: sono stati lanciati i file SQL 03 e 04?')
   }
   RF.caricato.base = true
   return true
@@ -300,7 +303,7 @@ async function assicuraFornitoreRadar(contattoId) {
   }
   await caricaFornitori(true)
   var g = fornitoreDaContatto(contattoId)
-  if (!g || !g.id) throw new Error('scheda Radar del fornitore non creata')
+  if (!g || !g.id) throw new Error('scheda acquisti del fornitore non creata')
   return g.id
 }
 
@@ -311,10 +314,11 @@ var MENU_DI = { articolo: 'cerca', fornitore: 'fornitori' }
 function vai(vista, param) {
   var h = '#' + vista + (param ? '=' + encodeURIComponent(param) : '')
   if (location.hash === h) vaiDaIndirizzo()
-  else location.hash = h
+  else { NAV.progHash = h; location.hash = h }
 }
 function vaiDaIndirizzo() {
   if (el('pagina-app').hidden) return
+  NAV.hash = location.hash || ''
   var m = /^#([a-z]+)(?:=(.*))?$/.exec(location.hash || '')
   var vista = m && VISTE.indexOf(m[1]) >= 0 ? m[1] : 'cerca'
   var param = m && m[2] ? decodeURIComponent(m[2]) : null
@@ -323,6 +327,7 @@ function vaiDaIndirizzo() {
 }
 function mostraVista(vista, param) {
   RF.vista = vista
+  RF.modificato = false
   VISTE.forEach(function (v) { el('vista-' + v).hidden = (v !== vista) })
   var menu = MENU_DI[vista] || vista
   document.querySelectorAll('#menu button').forEach(function (b) {
@@ -342,6 +347,88 @@ function mostraVista(vista, param) {
   window.scrollTo(0, 0)
 }
 
+// ─── Tasto «Indietro» (mouse, tastiera, telefono) ────────────────────────────
+// Ogni vista è un indirizzo (#cerca, #articolo=ID …): è già un passo nella
+// storia del browser. Qui si aggiunge:
+//  • le finestre aperte si chiudono con Indietro (invece di cambiare vista);
+//  • dati non salvati → domanda prima di lasciare la vista / chiudere la finestra;
+//  • una «guardia» sotto la prima schermata, così Indietro con una finestra
+//    aperta nella prima schermata non esce dall'app.
+// Stesso schema della Contabilità: Indietro consuma una voce, la si rimette.
+var NAV = { hash: '', progHash: null, guardia: false }
+var FIN = []                     // finestre aperte, l'ultima è quella in cima
+
+function assicuraGuardia() {
+  if (NAV.guardia) return
+  NAV.guardia = true
+  try {
+    if (!(history.state && (history.state.rf || history.state.rfBase))) {
+      history.replaceState({ rfBase: true }, '', location.href)
+      history.pushState({ rf: true }, '', location.href)
+    }
+  } catch (_) { /* senza storia si naviga lo stesso */ }
+}
+
+// Rimette la posizione com'era (Indietro aveva consumato una voce che non doveva).
+function ripristinaPosizione() {
+  try { history.pushState({ rf: true }, '', location.href.split('#')[0] + (NAV.hash || '')) } catch (_) { /* niente */ }
+}
+
+// C'è qualcosa che si perderebbe lasciando la vista? Restituisce il testo, o ''.
+function datiNonSalvati() {
+  if (el('pagina-app').hidden) return ''
+  if (RF.vista === 'importa' && typeof IMP !== 'undefined' && IMP && IMP.passo !== 3 && IMP.passo !== 4) {
+    var t = el('i-testo')
+    if (IMP.file || IMP.letto || (t && t.value.trim())) return 'Hai scelto un documento o un testo e l\'import non è finito: se esci non resta niente.'
+  }
+  if (RF.vista === 'richieste' && typeof RIC !== 'undefined' && RIC && !RIC.salvata && el('rn-rif')) {
+    if (RIC.righe.length || RIC.fornitori.length || el('rn-rif').value.trim() || el('rn-note').value.trim())
+      return 'La richiesta d\'offerta non è ancora preparata: se esci si perde quello che hai scritto.'
+  }
+  if (RF.modificato && (RF.vista === 'impostazioni' || RF.vista === 'fornitore'))
+    return 'Hai cambiato dei dati e non li hai salvati.'
+  return ''
+}
+
+function installaCronologia() {
+  window.addEventListener('popstate', async function (ev) {
+    // Un cambio di vista fatto dal programma (vai) non è un «Indietro»: ci pensa hashchange.
+    if (NAV.progHash !== null && location.hash === NAV.progHash) return
+    var fin = FIN.length ? FIN[FIN.length - 1] : null
+    if (fin) {                                   // 1. una finestra aperta: Indietro chiude lei
+      ripristinaPosizione()
+      if (fin.sporca && !(await conferma('Chiudere la finestra?', 'Hai scritto dei dati che non sono stati salvati.', 'Chiudi senza salvare', true))) return
+      if (FIN.indexOf(fin) >= 0) fin.chiudi()
+      return
+    }
+    if (ev.state && ev.state.rfBase) {           // 2. giù fino alla guardia: Indietro dalla prima schermata
+      var perso = datiNonSalvati()
+      if (perso && !(await conferma('Uscire senza salvare?', esc(perso), 'Esci', true))) { ripristinaPosizione(); return }
+      history.back()
+    }
+  })
+  window.addEventListener('hashchange', async function () {
+    var prog = NAV.progHash !== null
+    NAV.progHash = null
+    if (el('pagina-app').hidden) return
+    if (location.hash === NAV.hash) return       // già qui (es. posizione rimessa)
+    var perso = datiNonSalvati()
+    if (perso && !(await conferma('Lasciare questa schermata?', esc(perso), 'Lascia senza salvare', true))) {
+      if (prog) history.back(); else ripristinaPosizione()
+      return
+    }
+    vaiDaIndirizzo()
+  })
+  window.addEventListener('beforeunload', function (ev) {
+    if (datiNonSalvati()) { ev.preventDefault(); ev.returnValue = '' }
+  })
+  ;['vista-impostazioni', 'vista-fornitore'].forEach(function (id) {
+    var c = el(id)
+    c.addEventListener('input', function () { RF.modificato = true })
+    c.addEventListener('change', function () { RF.modificato = true })
+  })
+}
+
 // ─── Finestre (dialog) ───────────────────────────────────────────────────────
 // pulsanti: [{ testo, classe, azione(fin) , sinistra:true }]
 // L'azione principale va per ultima: finisce in basso a destra.
@@ -359,7 +446,10 @@ function apriFinestra(o) {
   var fin = {
     el: sfondo,
     contenuto: sfondo.querySelector('.contenuto'),
+    sporca: false,
     chiudi: function () {
+      var i = FIN.indexOf(fin)
+      if (i >= 0) FIN.splice(i, 1)
       sfondo.remove()
       document.removeEventListener('keydown', tasti)
       if (o.allaChiusura) o.allaChiusura()
@@ -384,6 +474,9 @@ function apriFinestra(o) {
   document.addEventListener('keydown', tasti)
   sfondo.querySelector('[data-chiudi]').addEventListener('click', fin.chiudi)
   el('finestre').appendChild(sfondo)
+  FIN.push(fin)
+  sfondo.addEventListener('input', function () { fin.sporca = true })
+  sfondo.addEventListener('change', function () { fin.sporca = true })
   var primo = sfondo.querySelector('.contenuto input, .contenuto select, .contenuto textarea, footer .btn-primario')
   if (primo) setTimeout(function () { primo.focus() }, 30)
   return fin
@@ -393,9 +486,10 @@ function conferma(titolo, testo, testoSi, pericolo) {
   return new Promise(function (ok) {
     apriFinestra({
       titolo: titolo, html: '<p>' + testo + '</p>',
+      allaChiusura: function () { ok(false) },   // ✕, Esc o Indietro = no (se ha già risposto sì non cambia)
       pulsanti: [
         { testo: 'Annulla', sinistra: true, azione: function (f) { f.chiudi(); ok(false) } },
-        { testo: testoSi || 'Sì', classe: pericolo ? 'btn-pericolo' : 'btn-primario', azione: function (f) { f.chiudi(); ok(true) } }
+        { testo: testoSi || 'Sì', classe: pericolo ? 'btn-pericolo' : 'btn-primario', azione: function (f) { ok(true); f.chiudi() } }
       ]
     })
   })

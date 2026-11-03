@@ -17,7 +17,7 @@ async function disegnaFornitori() {
         '<button type="button" class="btn" id="fo-ricarica">🔄 Ricarica dalla Rubrica</button>' +
         '<a class="btn btn-primario" href="' + URL_RUBRICA + '" target="_blank" rel="noopener">📇 Crea in Rubrica</a>' +
       '</div></div>' +
-    '<p class="aiuto">I fornitori sono i contatti della Rubrica segnati «Fornitori». Nome, telefono e indirizzo si cambiano nella Rubrica; qui solo i dati del Radar.</p>' +
+    '<p class="aiuto">I fornitori sono i contatti della Rubrica segnati «Fornitori». Nome, telefono e indirizzo si cambiano nella Rubrica; qui solo i dati d\'acquisto.</p>' +
     (RF.rubricaVuota ? banner('warn', 'Non vedo nessun contatto della Rubrica. Il tuo utente deve essere collegato all\'azienda (tabella tm_utenti): chiedi al titolare.') : '') +
     '<div class="barra-ricerca"><div class="campo"><span class="lente" aria-hidden="true">🔍</span>' +
       '<input id="fo-testo" type="search" placeholder="Cerca fornitore…" aria-label="Cerca fornitore" autocomplete="off"></div></div>' +
@@ -27,7 +27,7 @@ async function disegnaFornitori() {
       '<option value="ditte"' + (FORN.gruppo === 'ditte' ? ' selected' : '') + '>🔎 Ditte da valutare (' + (RF.ditte || []).length + ')</option>' +
     '</select>' +
     '<div class="gruppo-btn" style="margin:8px 0" id="fo-filtri"' + (FORN.gruppo === 'ditte' ? ' hidden' : '') + '>' +
-      '<label class="scelta"><input type="checkbox" id="fo-prezzi"' + (FORN.soloConPrezzi ? ' checked' : '') + '> Solo con scheda Radar</label>' +
+      '<label class="scelta"><input type="checkbox" id="fo-prezzi"' + (FORN.soloConPrezzi ? ' checked' : '') + '> Solo con scheda acquisti</label>' +
       '<label class="scelta"><input type="checkbox" id="fo-arch"' + (FORN.archiviati ? ' checked' : '') + '> Mostra archiviati</label>' +
     '</div>' +
     '<div id="fo-conteggio" class="conteggio"></div><div id="fo-elenco" class="elenco"></div>'
@@ -57,8 +57,8 @@ function elencoFornitori() {
   html('fo-elenco', lista.map(function (f) {
     var r = f.radar, k = f.contatto
     var t = []
-    if (!r) t.push(tag('', '➕', 'Senza scheda Radar'))
-    if (r && r.archiviato) t.push(tag('', '📦', 'Archiviato nel Radar'))
+    if (!r) t.push(tag('', '➕', 'Senza scheda acquisti'))
+    if (r && r.archiviato) t.push(tag('', '📦', 'Archiviato'))
     if (k && k.attivo === false) t.push(tag('', '📦', 'Archiviato in Rubrica'))
     if (r && r.valuta === 'EUR') t.push(tag('info', '💶', 'EUR'))
     if (r && r.solo_pacchi_interi) t.push(tag('info', '📦', 'Solo pacchi interi'))
@@ -179,7 +179,7 @@ function finestraDiventaFornitore(d) {
       .filter(function (f) { return f.contatto && f.contatto.attivo !== false })
       .map(function (f) {
         return '<option value="' + f.contatto.id + '"' + (f.contatto.id === att ? ' selected' : '') + '>' + esc(f.nome) +
-          (f.radar ? ' — ha già una scheda Radar: si uniscono' : '') + '</option>'
+          (f.radar ? ' — ha già una scheda acquisti: si uniscono' : '') + '</option>'
       }).join('')
     html(fin.q('#dv-info'), proposto && proposto.contatto ? 'Proposto per nome: <strong>' + esc(proposto.nome) + '</strong>. Controlla che sia la ditta giusta.' :
       'Nessun contatto con questo nome: crealo prima nella Rubrica.')
@@ -243,13 +243,13 @@ async function disegnaFornitore(param) {
       '</div>' : banner('warn', 'Il contatto della Rubrica non si legge (permessi o contatto archiviato).')) +
     '</div>' +
 
-    '<div class="scheda"><h2>📡 Dati del Radar</h2>' +
+    '<div class="scheda"><h2>📡 Dati d\'acquisto</h2>' +
       '<fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:600">Attività (più di una se serve)</legend>' +
         '<div class="gruppo-btn">' + servizi.map(function (c) {
           var on = r && (r.attivita || []).indexOf(c.nome) >= 0
           return '<label class="scelta" style="margin-right:12px"><input type="checkbox" name="fs-att" value="' + esc(c.nome) + '"' + (on ? ' checked' : '') + '> ' + esc(c.nome) + '</label>'
         }).join('') + '</div></fieldset>' +
-      (r && r.specialita && r.specialita.length ? '<p class="aiuto">Specialità dal vecchio Radar: ' + esc(r.specialita.join(', ')) + '</p>' : '') +
+      (r && r.specialita && r.specialita.length ? '<p class="aiuto">Specialità dal vecchio programma: ' + esc(r.specialita.join(', ')) + '</p>' : '') +
       '<div class="griglia">' +
         '<div><label for="fs-valuta">Valuta abituale</label><select id="fs-valuta"><option' + (r && r.valuta === 'CHF' ? ' selected' : '') + '>CHF</option><option' + (r && r.valuta === 'EUR' ? ' selected' : '') + '>EUR</option></select></div>' +
         '<div><label for="fs-sconto">Sconto di base %</label><input id="fs-sconto" inputmode="decimal" value="' + (r ? RFC.fmt(r.sconto_base, 2).replace(/'/g, '') : '0') + '"></div>' +
@@ -290,7 +290,7 @@ async function disegnaFornitore(param) {
     '<div class="barra-azioni non-stampare">' +
       (RF.titolare && r ? '<button type="button" class="btn btn-pericolo" id="fs-archivia">' + (r.archiviato ? '↩️ Ripristina' : '📦 Archivia') + '</button>' : '') +
       '<div class="spazio"></div>' +
-      (k ? '<button type="button" class="btn btn-primario" id="fs-salva">💾 Salva dati Radar</button>' : '') +
+      (k ? '<button type="button" class="btn btn-primario" id="fs-salva">💾 Salva dati d\'acquisto</button>' : '') +
     '</div>'
 
   el('fs-indietro').addEventListener('click', function () { vai('fornitori') })
@@ -337,7 +337,7 @@ async function disegnaFornitore(param) {
       var u = await sb.from('rf_fornitori').update(dati).eq('id', fid).select('id')
       if (u.error) throw u.error
       await caricaFornitori(true)
-      toast('💾 Dati Radar salvati')
+      toast('💾 Dati d\'acquisto salvati')
       disegnaFornitore(param)
     } catch (e) { html('fs-err', banner('err', esc('Non salvato: ' + spiegaErrore(e)))) }
   })

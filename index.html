@@ -3,26 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>CT Radar Fornitori — Carpenteria Ticinese</title>
+  <title>Fornitori · Carpenteria Ticinese</title>
   <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#138d90" />
+  <link rel="manifest" href="manifest.json?v=2" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icone/icona-32.png?v=2" />
+  <link rel="apple-touch-icon" href="icone/icona-180.png?v=2" />
+  <meta name="apple-mobile-web-app-title" content="Fornitori" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <!-- ?v= : forza il browser a riprendere CSS/JS aggiornati. index.html resta in
        cache: dopo ogni caricamento su GitHub si apre con Ctrl+F5. -->
-  <link rel="stylesheet" href="style.css?v=1" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
-<body data-versione="1">
+<body data-versione="2">
 
 <!-- ═══ LOGIN ═══════════════════════════════════════════════════════════════ -->
 <section id="pagina-login" class="pagina-centro" hidden>
   <div class="card-login">
-    <div class="logo">📡 <strong>CT Radar Fornitori</strong><span>Carpenteria Ticinese</span></div>
+    <div class="logo">📡 <strong>Fornitori</strong><span>Carpenteria Ticinese</span></div>
     <form id="login-form" autocomplete="on">
       <label for="login-email">Email</label>
       <input id="login-email" type="email" autocomplete="username" required />
       <label for="login-password">Password</label>
       <input id="login-password" type="password" autocomplete="current-password" required />
       <div id="login-banner" aria-live="polite" style="margin-top:12px"></div>
-      <button id="login-btn" type="submit" class="btn btn-primario btn-largo" style="margin-top:8px">Accedi</button>
-      <p class="aiuto" style="margin-top:12px">Si entra con gli stessi email e password delle altre app.</p>
+      <button id="login-btn" type="submit" class="btn btn-primario btn-largo" style="margin-top:8px">Entra</button>
+      <p class="aiuto" style="margin-top:12px">Si entra con gli stessi email e password delle altre app. (Fornitori, ex Radar Fornitori.)</p>
+      <p class="aiuto" id="versione-login" style="margin-top:4px"></p>
     </form>
   </div>
 </section>
@@ -30,8 +38,8 @@
 <!-- ═══ RUOLO NON AMMESSO ═══════════════════════════════════════════════════ -->
 <section id="pagina-negato" class="pagina-centro" hidden>
   <div class="card-login">
-    <div class="logo">📡 <strong>CT Radar Fornitori</strong><span>Carpenteria Ticinese</span></div>
-    <div class="banner warn">🔒 Il Radar è riservato a titolare e responsabile.</div>
+    <div class="logo">📡 <strong>Fornitori</strong><span>Carpenteria Ticinese</span></div>
+    <div class="banner warn">🔒 Fornitori è riservato a titolare e responsabile.</div>
     <p id="negato-dettaglio" class="dim"></p>
     <button type="button" class="btn btn-largo" id="negato-esci">🚪 Esci</button>
   </div>
@@ -40,7 +48,7 @@
 <!-- ═══ APP ═════════════════════════════════════════════════════════════════ -->
 <section id="pagina-app" hidden>
   <header id="topbar">
-    <span class="titolo">📡 CT Radar</span>
+    <span class="titolo">📡 Fornitori</span><span class="ver" id="versione-topbar"></span>
     <div class="utente">
       <span id="topbar-utente"></span>
       <button type="button" class="btn btn-piccolo" id="btn-esci">🚪 Esci</button>
@@ -75,14 +83,14 @@
 <!-- Supabase (versione fissa). SheetJS, pdf.js e Chart.js si caricano solo
      quando servono (vedi caricaLibreria in base.js). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="calcolo.js?v=1"></script>
-<script src="base.js?v=1"></script>
-<script src="cerca.js?v=1"></script>
-<script src="fornitori.js?v=1"></script>
+<script src="calcolo.js?v=2"></script>
+<script src="base.js?v=2"></script>
+<script src="cerca.js?v=2"></script>
+<script src="fornitori.js?v=2"></script>
 <script src="importa.js?v=2"></script>
-<script src="variazioni.js?v=1"></script>
-<script src="richieste.js?v=1"></script>
-<script src="impostazioni.js?v=1"></script>
-<script src="avvio.js?v=1"></script>
+<script src="variazioni.js?v=2"></script>
+<script src="richieste.js?v=2"></script>
+<script src="impostazioni.js?v=2"></script>
+<script src="avvio.js?v=2"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
-// CT Radar Fornitori — avvio.js
-// Collega i pulsanti fissi e decide la prima pagina (login o Radar).
+// Fornitori (ex Radar Fornitori) — avvio.js
+// Collega i pulsanti fissi e decide la prima pagina (login o Fornitori).
 
 'use strict'
 
@@ -9,7 +9,9 @@ el('negato-esci').addEventListener('click', esci)
 document.querySelectorAll('#menu button').forEach(function (b) {
   b.addEventListener('click', function () { vai(b.dataset.vista) })
 })
-window.addEventListener('hashchange', vaiDaIndirizzo)
+installaCronologia()
+el('versione-login').textContent = 'Versione ' + APP_VERSIONE
+el('versione-topbar').textContent = 'v' + APP_VERSIONE
 
 // Se la sessione finisce (logout da un'altra scheda, token scaduto), si torna al login.
 sb.auth.onAuthStateChange(function (evento) {

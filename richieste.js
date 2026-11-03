@@ -144,6 +144,7 @@ async function salvaRichiesta() {
     var r2 = await sb.from('rf_richieste_fornitori').insert(fids.map(function (f) { return { richiesta_id: id, fornitore_id: f } }))
     if (r2.error) throw r2.error
     toast('📝 Richiesta ' + n.data + ' preparata')
+    RIC.salvata = true
     vai('richieste', id)
   } catch (e) {
     el('rn-prepara').disabled = false
