@@ -1,4 +1,4 @@
-// Acquisti — documenti.js
+// Materiali — documenti.js
 // Archivio privato di offerte e listini (bucket rf-documenti): ogni documento è la prova dei suoi prezzi.
 // I file si aprono solo con link firmati a tempo (apriDocumento in base.js).
 

@@ -1,4 +1,4 @@
-// Acquisti (ex Radar, ex Fornitori) — base.js
+// Materiali — base.js
 // Configurazione, login, ruolo, caricamento dei dati, attrezzi comuni
 // (finestre, avvisi, menu con ricerca, Worker, foto, file).
 //
@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 4
+var APP_VERSIONE = 5
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -303,7 +303,7 @@ async function assicuraFornitoreRadar(contattoId) {
   }
   await caricaFornitori(true)
   var g = fornitoreDaContatto(contattoId)
-  if (!g || !g.id) throw new Error('scheda acquisti del fornitore non creata')
+  if (!g || !g.id) throw new Error('scheda Materiali del fornitore non creata')
   return g.id
 }
 

@@ -27,7 +27,7 @@ async function disegnaFornitori() {
       '<option value="ditte"' + (FORN.gruppo === 'ditte' ? ' selected' : '') + '>🔎 Ditte da valutare (' + (RF.ditte || []).length + ')</option>' +
     '</select>' +
     '<div class="gruppo-btn" style="margin:8px 0" id="fo-filtri"' + (FORN.gruppo === 'ditte' ? ' hidden' : '') + '>' +
-      '<label class="scelta"><input type="checkbox" id="fo-prezzi"' + (FORN.soloConPrezzi ? ' checked' : '') + '> Solo con scheda acquisti</label>' +
+      '<label class="scelta"><input type="checkbox" id="fo-prezzi"' + (FORN.soloConPrezzi ? ' checked' : '') + '> Solo con scheda Materiali</label>' +
       '<label class="scelta"><input type="checkbox" id="fo-arch"' + (FORN.archiviati ? ' checked' : '') + '> Mostra archiviati</label>' +
     '</div>' +
     '<div id="fo-conteggio" class="conteggio"></div><div id="fo-elenco" class="elenco"></div>'
@@ -57,7 +57,7 @@ function elencoFornitori() {
   html('fo-elenco', lista.map(function (f) {
     var r = f.radar, k = f.contatto
     var t = []
-    if (!r) t.push(tag('', '➕', 'Senza scheda acquisti'))
+    if (!r) t.push(tag('', '➕', 'Senza scheda Materiali'))
     if (r && r.archiviato) t.push(tag('', '📦', 'Archiviato'))
     if (k && k.attivo === false) t.push(tag('', '📦', 'Archiviato in Rubrica'))
     if (r && r.valuta === 'EUR') t.push(tag('info', '💶', 'EUR'))
@@ -179,7 +179,7 @@ function finestraDiventaFornitore(d) {
       .filter(function (f) { return f.contatto && f.contatto.attivo !== false })
       .map(function (f) {
         return '<option value="' + f.contatto.id + '"' + (f.contatto.id === att ? ' selected' : '') + '>' + esc(f.nome) +
-          (f.radar ? ' — ha già una scheda acquisti: si uniscono' : '') + '</option>'
+          (f.radar ? ' — ha già una scheda Materiali: si uniscono' : '') + '</option>'
       }).join('')
     html(fin.q('#dv-info'), proposto && proposto.contatto ? 'Proposto per nome: <strong>' + esc(proposto.nome) + '</strong>. Controlla che sia la ditta giusta.' :
       'Nessun contatto con questo nome: crealo prima nella Rubrica.')
@@ -243,7 +243,7 @@ async function disegnaFornitore(param) {
       '</div>' : banner('warn', 'Il contatto della Rubrica non si legge (permessi o contatto archiviato).')) +
     '</div>' +
 
-    '<div class="scheda"><h2>🛒 Dati d\'acquisto</h2>' +
+    '<div class="scheda"><h2>📦 Dati d\'acquisto</h2>' +
       '<fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:600">Attività (più di una se serve)</legend>' +
         '<div class="gruppo-btn">' + servizi.map(function (c) {
           var on = r && (r.attivita || []).indexOf(c.nome) >= 0

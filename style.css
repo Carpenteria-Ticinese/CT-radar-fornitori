@@ -1,4 +1,4 @@
-/* Acquisti (ex Radar, ex Fornitori) — Carpenteria Ticinese | Stile
+/* Materiali — Carpenteria Ticinese | Stile
    Stessa tavolozza di Rubrica e Pre-contabilità.
    Regole: testo minimo 16 px, usabile a 360 px, icone sempre con testo,
    mai un significato dato solo dal colore, azione principale in basso a destra. */
@@ -6,7 +6,7 @@
 :root {
   --bg:         #f4f6f8;
   --surface:    #ffffff;
-  --primary:    #138d90;
+  --primary:    #0e7c86;
   --primary-dk: #0d6568;
   --primary-lt: #e3f4f4;
   --text:       #111827;
@@ -128,7 +128,7 @@ input, select, textarea {
   border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text);
 }
 textarea { min-height: 120px; resize: vertical; }
-input:focus, select:focus, textarea:focus { outline: 3px solid rgba(19,141,144,.35); border-color: var(--primary); }
+input:focus, select:focus, textarea:focus { outline: 3px solid rgba(14,124,134,.35); border-color: var(--primary); }
 input[type="checkbox"], input[type="radio"] { width: 22px; min-height: 22px; height: 22px; margin: 0; accent-color: var(--primary); }
 .scelta { display: flex; align-items: center; gap: 10px; font-weight: 400; margin: 8px 0; cursor: pointer; }
 .aiuto { font-size: 15px; color: var(--text2); margin-top: 4px; }

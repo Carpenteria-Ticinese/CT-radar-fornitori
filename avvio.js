@@ -1,5 +1,5 @@
-// Acquisti (ex Radar, ex Fornitori) — avvio.js
-// Collega i pulsanti fissi e decide la prima pagina (login o Acquisti).
+// Materiali — avvio.js
+// Collega i pulsanti fissi e decide la prima pagina (login o Materiali).
 
 'use strict'
 

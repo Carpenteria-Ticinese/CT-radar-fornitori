@@ -3,25 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Acquisti · Carpenteria Ticinese</title>
+  <title>Materiali · Carpenteria Ticinese</title>
   <meta name="robots" content="noindex" />
-  <meta name="theme-color" content="#138d90" />
-  <link rel="manifest" href="manifest.json?v=4" />
-  <link rel="icon" type="image/png" sizes="32x32" href="icone/icona-32.png?v=4" />
-  <link rel="apple-touch-icon" href="icone/icona-180.png?v=4" />
-  <meta name="apple-mobile-web-app-title" content="Acquisti" />
+  <meta name="theme-color" content="#0e7c86" />
+  <link rel="manifest" href="manifest.json?v=5" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icone/icona-32.png?v=5" />
+  <link rel="apple-touch-icon" href="icone/icona-180.png?v=5" />
+  <meta name="apple-mobile-web-app-title" content="Materiali" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <!-- ?v= : forza il browser a riprendere CSS/JS aggiornati. index.html resta in
        cache: dopo ogni caricamento su GitHub si apre con Ctrl+F5. -->
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
-<body data-versione="4">
+<body data-versione="5">
 
 <!-- ═══ LOGIN ═══════════════════════════════════════════════════════════════ -->
 <section id="pagina-login" class="pagina-centro" hidden>
   <div class="card-login">
-    <div class="logo">🛒 <strong>Acquisti</strong><span>Carpenteria Ticinese</span></div>
+    <div class="logo">📦 <strong>Materiali</strong><span>Carpenteria Ticinese</span></div>
     <form id="login-form" autocomplete="on">
       <label for="login-email">Email</label>
       <input id="login-email" type="email" autocomplete="username" required />
@@ -29,7 +29,7 @@
       <input id="login-password" type="password" autocomplete="current-password" required />
       <div id="login-banner" aria-live="polite" style="margin-top:12px"></div>
       <button id="login-btn" type="submit" class="btn btn-primario btn-largo" style="margin-top:8px">Entra</button>
-      <p class="aiuto" style="margin-top:12px">Si entra con gli stessi email e password delle altre app. (Acquisti, ex Radar, ex Fornitori.)</p>
+      <p class="aiuto" style="margin-top:12px">Si entra con gli stessi email e password delle altre app. (Materiali, ex Radar, ex Fornitori.)</p>
       <p class="aiuto" id="versione-login" style="margin-top:4px"></p>
     </form>
   </div>
@@ -38,8 +38,8 @@
 <!-- ═══ RUOLO NON AMMESSO ═══════════════════════════════════════════════════ -->
 <section id="pagina-negato" class="pagina-centro" hidden>
   <div class="card-login">
-    <div class="logo">🛒 <strong>Acquisti</strong><span>Carpenteria Ticinese</span></div>
-    <div class="banner warn">🔒 Acquisti è riservato a titolare e responsabile.</div>
+    <div class="logo">📦 <strong>Materiali</strong><span>Carpenteria Ticinese</span></div>
+    <div class="banner warn">🔒 Materiali è riservato a titolare e responsabile.</div>
     <p id="negato-dettaglio" class="dim"></p>
     <button type="button" class="btn btn-largo" id="negato-esci">🚪 Esci</button>
   </div>
@@ -48,7 +48,7 @@
 <!-- ═══ APP ═════════════════════════════════════════════════════════════════ -->
 <section id="pagina-app" hidden>
   <header id="topbar">
-    <span class="titolo">🛒 Acquisti</span><span class="ver" id="versione-topbar"></span>
+    <span class="titolo">📦 Materiali</span><span class="ver" id="versione-topbar"></span>
     <div class="utente">
       <span id="topbar-utente"></span>
       <button type="button" class="btn btn-piccolo" id="btn-esci">🚪 Esci</button>
@@ -85,15 +85,15 @@
 <!-- Supabase (versione fissa). SheetJS, pdf.js e Chart.js si caricano solo
      quando servono (vedi caricaLibreria in base.js). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="calcolo.js?v=4"></script>
-<script src="base.js?v=4"></script>
-<script src="cerca.js?v=4"></script>
-<script src="fornitori.js?v=4"></script>
-<script src="importa.js?v=4"></script>
-<script src="variazioni.js?v=4"></script>
-<script src="richieste.js?v=4"></script>
-<script src="documenti.js?v=4"></script>
-<script src="impostazioni.js?v=4"></script>
-<script src="avvio.js?v=4"></script>
+<script src="calcolo.js?v=5"></script>
+<script src="base.js?v=5"></script>
+<script src="cerca.js?v=5"></script>
+<script src="fornitori.js?v=5"></script>
+<script src="importa.js?v=5"></script>
+<script src="variazioni.js?v=5"></script>
+<script src="richieste.js?v=5"></script>
+<script src="documenti.js?v=5"></script>
+<script src="impostazioni.js?v=5"></script>
+<script src="avvio.js?v=5"></script>
 </body>
 </html>
