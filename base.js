@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 3
+var APP_VERSIONE = 4
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -308,7 +308,7 @@ async function assicuraFornitoreRadar(contattoId) {
 }
 
 // ─── Navigazione (#cerca, #importa, #articolo=ID, #fornitore=ID …) ───────────
-var VISTE = ['cerca', 'articolo', 'importa', 'variazioni', 'fornitori', 'fornitore', 'richieste', 'impostazioni']
+var VISTE = ['cerca', 'articolo', 'importa', 'variazioni', 'fornitori', 'fornitore', 'documenti', 'richieste', 'impostazioni']
 var MENU_DI = { articolo: 'cerca', fornitore: 'fornitori' }
 
 function vai(vista, param) {
@@ -338,7 +338,7 @@ function mostraVista(vista, param) {
   var f = {
     cerca: disegnaCerca, articolo: disegnaArticolo, importa: disegnaImporta,
     variazioni: disegnaVariazioni, fornitori: disegnaFornitori, fornitore: disegnaFornitore,
-    richieste: disegnaRichieste, impostazioni: disegnaImpostazioni
+    documenti: disegnaDocumenti, richieste: disegnaRichieste, impostazioni: disegnaImpostazioni
   }[vista]
   Promise.resolve(f(param)).catch(function (e) {
     console.error(e)
@@ -692,8 +692,10 @@ async function copiaTesto(t) {
 // ─── Avvisi di un prezzo (icona + scritta) ───────────────────────────────────
 function avvisiPrezzo(p, fornitore) {
   var out = []
+  if (p.da_verificare) out.push(tag('warn', '⚠️', 'Da verificare'))
   if (p.scaduto) out.push(tag('warn', '⏰', 'Offerta scaduta'))
-  if (p.vecchio) out.push(tag('warn', '🕰️', 'Prezzo più vecchio di ' + (RF.imp ? RF.imp.soglia_mesi : 6) + ' mesi'))
+  if (dataIgnota(p.data_prezzo)) out.push(tag('warn', '📅', 'Senza data certa'))
+  else if (p.vecchio) out.push(tag('warn', '🕰️', 'Prezzo più vecchio di ' + (RF.imp ? RF.imp.soglia_mesi : 6) + ' mesi'))
   if (p.sconto_noto === false) out.push(tag('warn', '❔', 'Sconto non noto'))
   if (p.sconto_non_applicato) out.push(tag('warn', '❔', 'Nuovo sconto non applicato (sconto non noto)'))
   if (p.senza_fattore) out.push(tag('err', '📏', 'Unità diversa senza fattore di conversione'))
@@ -704,6 +706,24 @@ function avvisiPrezzo(p, fornitore) {
   var nv = Number(p.n_variazioni) || 0
   if (nv > 0) out.push(tag('info', '📈', nv + (nv === 1 ? ' variazione applicata' : ' variazioni applicate')))
   return out.join(' ')
+}
+// Data sconosciuta o futura nel documento: nel database c'è il segnaposto 01.01.2000.
+function dataIgnota(s) { return !!s && String(s).slice(0, 10) <= '2000-01-01' }
+function dataPrezzoTesto(p) {
+  if (dataIgnota(p.data_prezzo)) return p.data_nel_documento ? esc(p.data_nel_documento) : 'senza data'
+  return RFC.fmtData(p.data_prezzo)
+}
+// «📄 Prova del prezzo»: apre il documento da cui viene il prezzo, con un link firmato a tempo.
+function bottoneProva(p) {
+  if (p.documento_percorso) {
+    return '<button type="button" class="btn btn-piccolo" data-doc="' + esc(p.documento_percorso) + '">📄 Prova del prezzo</button>'
+  }
+  return '<span class="dim piccolo">📄 Nessun documento</span>'
+}
+function collegaProve(contenitore) {
+  contenitore.querySelectorAll('[data-doc]').forEach(function (b) {
+    b.addEventListener('click', function () { apriDocumento(b.dataset.doc) })
+  })
 }
 function prezzoTesto(valore, valuta) {
   if (valore == null) return '–'

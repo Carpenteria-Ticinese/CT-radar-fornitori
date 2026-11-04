@@ -49,8 +49,10 @@ function avvisiArticolo(a) {
   var t = []
   if (a.archiviato) t.push(tag('', '📦', 'Archiviato'))
   if (a.da_verificare) t.push(tag('warn', '❓', 'Da verificare'))
+  var nv = Number(a.n_da_verificare) || 0
+  if (nv) t.push(tag('warn', '⚠️', nv === 1 ? 'Prezzo da verificare' : nv + ' prezzi da verificare'))
   if (!a.n_foto) t.push(tag('', '📷', 'Manca la foto'))
-  if (!a.n_prezzi) t.push(tag('', '∅', 'Nessun prezzo'))
+  if (!a.n_prezzi) { if (!nv) t.push(tag('', '∅', 'Nessun prezzo')) }
   else if (!a.preferito_fornitore_id) t.push(tag('warn', '⭐', 'Nessun preferito'))
   if (a.preferito_scaduto) t.push(tag('warn', '⏰', 'Offerta scaduta'))
   if (a.preferito_vecchio) t.push(tag('warn', '🕰️', 'Prezzo vecchio'))
@@ -64,7 +66,7 @@ function filtraArticoli() {
   return RF.articoli.filter(function (a) {
     if (a.archiviato && !CERCA.archiviati) return false
     if (CERCA.categoria && String(a.categoria_id) !== String(CERCA.categoria)) return false
-    if (CERCA.soloVerificare && !a.da_verificare) return false
+    if (CERCA.soloVerificare && !a.da_verificare && !Number(a.n_da_verificare)) return false
     return !CERCA.testo || RFC.corrisponde(a._cerca, CERCA.testo)
   })
 }
@@ -80,7 +82,10 @@ async function elencoCerca() {
       : a.migliore_chf != null
         ? '<strong>' + RFC.fmt(a.migliore_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
           '<span class="piccolo">più conveniente: ' + esc(a.migliore_nome || '') + '</span>'
-        : '<span class="dim">Nessun prezzo</span>'
+        : a.da_verificare_chf != null
+          ? '<strong>' + RFC.fmt(a.da_verificare_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
+            '<span class="piccolo">⚠️ da verificare</span>'
+          : '<span class="dim">Nessun prezzo</span>'
     return '<button type="button" class="riga" data-id="' + a.id + '">' +
       '<div class="foto-mini" data-foto="' + esc(a.foto_principale || '') + '">' + (a.foto_principale ? '' : 'Manca foto') + '</div>' +
       '<div class="corpo"><div class="codice">' + esc(a.codice) + '</div>' +
@@ -116,10 +121,12 @@ async function disegnaArticolo(id) {
   var r = await Promise.all([
     sb.from('rf_v_confronto').select('*').eq('articolo_id', id).order('posizione'),
     sb.from('rf_foto_articolo').select('*').eq('articolo_id', id).eq('archiviata', false).order('principale', { ascending: false }).order('creato_il'),
-    sb.from('rf_articoli').select('*').eq('id', id).single()
+    sb.from('rf_articoli').select('*').eq('id', id).single(),
+    sb.from('rf_v_prezzi_attuali').select('*').eq('articolo_id', id).eq('da_verificare', true).order('data_prezzo', { ascending: false })
   ])
-  r.forEach(function (x) { if (x.error) throw x.error })
+  r.slice(0, 3).forEach(function (x) { if (x.error) throw x.error })
   var prezzi = r[0].data || [], foto = r[1].data || [], art = r[2].data
+  var daVerificare = r[3].error ? [] : (r[3].data || [])   // errore = database senza RF_16: la scheda resta come prima
   var cat = categoriaDaId(art.categoria_id)
 
   v.innerHTML =
@@ -144,6 +151,11 @@ async function disegnaArticolo(id) {
         RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + ') + costo di arrivo stimato del fornitore.</p>' +
       tabellaConfronto(prezzi, art) +
     '</div>' +
+    (daVerificare.length ? '<div class="scheda" id="a-daverificare">' +
+      '<div class="intestazione"><h2>⚠️ Prezzi da verificare</h2></div>' +
+      '<p class="aiuto">Non sono confermati: restano fuori dal confronto. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
+      tabellaDaVerificare(daVerificare, art) +
+    '</div>' : '') +
     '<div class="barra-azioni non-stampare">' +
       '<div class="gruppo-btn">' +
         '<button type="button" class="btn" id="a-storico">📊 Storico</button>' +
@@ -155,6 +167,13 @@ async function disegnaArticolo(id) {
     '</div>'
 
   disegnaFoto(art, foto)
+  collegaProve(v)
+  v.querySelectorAll('[data-conferma]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = daVerificare.filter(function (x) { return x.id === b.dataset.conferma })[0]
+      if (p) finestraConfermaPrezzo(p, art)
+    })
+  })
   el('a-indietro').addEventListener('click', function () { vai('cerca') })
   el('a-storico').addEventListener('click', function () { finestraStorico(art) })
   el('a-preferito').addEventListener('click', function () { finestraPreferito(art, prezzi) })
@@ -203,8 +222,81 @@ function tabellaConfronto(prezzi, art) {
           (p.costo_arrivo_pct ? '<br><span class="piccolo">+' + RFC.fmt(p.costo_arrivo_pct, 1) + '% arrivo</span>' : '') + '</td>' +
         '<td data-et="Data">' + RFC.fmtData(p.data_prezzo) + (p.valido_fino ? '<br><span class="piccolo">fino al ' + RFC.fmtData(p.valido_fino) + '</span>' : '') + '</td>' +
         '<td data-et="Chi" class="nowrap">' + esc(RFC.timbro(p.creato_iniziali, p.creato_il)) + '</td>' +
-        '<td data-et="Avvisi"><div class="tags">' + avvisiPrezzo(p) + '</div></td></tr>'
+        '<td data-et="Avvisi"><div class="tags">' + avvisiPrezzo(p) + '</div>' +
+          (p.documento_percorso ? '<div style="margin-top:6px">' + bottoneProva(p) + '</div>' : '') + '</td></tr>'
     }).join('') + '</tbody></table></div>'
+}
+
+// Prezzi «da verificare» di un articolo: si vedono, ma non stanno nel confronto.
+function tabellaDaVerificare(prezzi, art) {
+  return '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
+    '<th>Fornitore</th><th>Voce</th><th class="num">Listino e sconti</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th>' +
+    '<th>Data</th><th>Perché</th><th></th></tr></thead><tbody>' +
+    prezzi.map(function (p) {
+      var s1 = Number(p.sconto1_usato) || 0
+      return '<tr>' +
+        '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' +
+          (p.fornitore_fuori ? '<br>' + tag('warn', '❔', 'Fornitore da scegliere') : '') + '</td>' +
+        '<td data-et="Voce">' + esc(p.descrizione_fornitore || '–') + (p.nota ? '<br><span class="dim piccolo">' + esc(p.nota) + '</span>' : '') + '</td>' +
+        '<td data-et="Listino e sconti" class="num">' + RFC.fmt(p.listino) + ' ' + esc(p.valuta) +
+          (s1 ? '<br><span class="piccolo">−' + RFC.fmt(s1, 2) + '%</span>' : '') + '</td>' +
+        '<td data-et="Netto" class="num">' + prezzoTesto(p.netto_oggi, p.valuta) + '</td>' +
+        '<td data-et="CHF per unità" class="num"><strong>' + (p.netto_chf != null ? RFC.fmt(p.netto_chf) : '–') + '</strong></td>' +
+        '<td data-et="Data">' + dataPrezzoTesto(p) + '</td>' +
+        '<td data-et="Perché"><div class="tags">' + tag('warn', '⚠️', 'Da verificare') + '</div>' +
+          (p.da_verificare_motivo ? '<span class="piccolo">' + esc(p.da_verificare_motivo) + '</span>' : '') + '</td>' +
+        '<td data-et="Azioni" class="non-stampare"><div class="gruppo-btn">' +
+          '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">✅ Conferma</button>' +
+          bottoneProva(p) + '</div></td></tr>'
+    }).join('') + '</tbody></table></div>'
+}
+
+// Conferma: fornitore e data devono essere veri. Il database rifiuta il resto (rf_conferma_prezzo).
+function finestraConfermaPrezzo(p, art) {
+  var certa = !dataIgnota(p.data_prezzo)
+  var contattoAttuale = null
+  if (!p.fornitore_fuori) {
+    var attuale = fornitoreDaId(p.fornitore_id)
+    contattoAttuale = attuale && attuale.contatto ? attuale.contatto.id : null
+  }
+  var fin = apriFinestra({
+    titolo: '✅ Conferma prezzo — ' + art.codice,
+    html:
+      '<p><strong>' + esc(p.descrizione_fornitore || art.descrizione) + '</strong><br>' +
+        'Netto: <strong>' + prezzoTesto(p.netto_oggi, p.valuta) + '</strong></p>' +
+      (p.data_nel_documento ? '<p class="aiuto">Nel documento: ' + esc(p.data_nel_documento) + '.</p>' : '') +
+      '<label for="cf-forn">Fornitore</label><select id="cf-forn">' + opzioniFornitori(contattoAttuale, true) + '</select>' +
+      '<p class="aiuto">Se manca, si crea in Anagrafiche.</p>' +
+      '<label for="cf-data">Data del prezzo</label>' +
+      '<input id="cf-data" type="date" max="' + RFC.oggiISO() + '" value="' + (certa ? esc(String(p.data_prezzo).slice(0, 10)) : '') + '">' +
+      '<div id="cf-err"></div>',
+    pulsanti: [
+      { testo: 'Annulla', sinistra: true, azione: function (f) { f.chiudi() } },
+      { testo: '✅ Conferma prezzo', classe: 'btn-primario', azione: salva }
+    ]
+  })
+  async function salva(f, b) {
+    var contatto = f.q('#cf-forn').value, data = f.q('#cf-data').value
+    if (!contatto) return html(f.q('#cf-err'), banner('warn', 'Scegli il fornitore.'))
+    if (!data) return html(f.q('#cf-err'), banner('warn', 'Scrivi la data del prezzo.'))
+    if (data > RFC.oggiISO()) return html(f.q('#cf-err'), banner('warn', 'La data non può essere nel futuro.'))
+    b.disabled = true
+    try {
+      if (!(await sessioneValida())) return
+      var fid = await assicuraFornitoreRadar(contatto)
+      var r = await sb.rpc('rf_conferma_prezzo', { p_id: p.id, p_fornitore: fid, p_data: data })
+      if (r.error) throw r.error
+      f.sporca = false
+      f.chiudi()
+      await caricaArticoli(true)
+      toast('✅ Prezzo confermato')
+      disegnaArticolo(art.id)
+    } catch (e) {
+      html(f.q('#cf-err'), banner('err', esc('Non riuscito: ' + spiegaErrore(e))))
+      b.disabled = false
+    }
+  }
+  return fin
 }
 
 // ── Foto ─────────────────────────────────────────────────────────────────────
@@ -299,16 +391,20 @@ async function finestraStorico(art) {
       '<th>Data</th><th>Fornitore</th><th class="num">Listino</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th><th>Stato</th><th>Documento</th><th>Chi</th></tr></thead><tbody>' +
       sel.slice().reverse().map(function (x) {
         return '<tr class="' + (x.stato === 'sostituito' ? 'sostituito' : '') + '">' +
-          '<td data-et="Data">' + RFC.fmtData(x.data_prezzo) + '</td>' +
-          '<td data-et="Fornitore">' + esc(x.fornitore_nome) + (x.variante ? ' ' + tag('', '🔀', 'Variante') : '') + '</td>' +
+          '<td data-et="Data">' + dataPrezzoTesto(x) + '</td>' +
+          '<td data-et="Fornitore">' + esc(x.fornitore_nome) + (x.variante ? ' ' + tag('', '🔀', 'Variante') : '') +
+            (x.da_verificare && x.stato === 'attivo' ? ' ' + tag('warn', '⚠️', 'Da verificare') : '') + '</td>' +
           '<td data-et="Listino" class="num">' + prezzoTesto(x.listino, x.valuta) + '</td>' +
           '<td data-et="Netto" class="num">' + prezzoTesto(x.netto_base, x.valuta) + '</td>' +
           '<td data-et="CHF" class="num">' + (x.netto_chf_cambio_oggi != null ? RFC.fmt(x.netto_chf_cambio_oggi) : '–') + '</td>' +
           '<td data-et="Stato">' + (x.stato === 'attivo' ? tag('ok', '✔️', 'Attivo') : tag('', '↪️', 'Sostituito')) + '</td>' +
-          '<td data-et="Documento">' + esc([x.documento_tipo, x.documento_numero].filter(Boolean).join(' ')) + '</td>' +
+          '<td data-et="Documento">' + esc([x.documento_tipo, x.documento_numero].filter(Boolean).join(' ')) +
+            (x.documento_percorso ? '<br>' + bottoneProva(x) : '') + '</td>' +
           '<td data-et="Chi" class="nowrap">' + esc(RFC.timbro(x.creato_iniziali, x.creato_il)) + '</td></tr>'
       }).join('') + '</tbody></table></div>' : '<div class="vuoto">Nessun prezzo.</div>')
-    disegnaGrafico(sel)
+    collegaProve(fin.q('#s-tabella'))
+    // nel grafico solo i prezzi con una data vera
+    disegnaGrafico(sel.filter(function (x) { return !dataIgnota(x.data_prezzo) }))
   }
   async function disegnaGrafico(sel) {
     try { await caricaLibreria('chart') } catch (e) { html(fin.q('#s-tabella'), banner('warn', esc('Grafico non disponibile: ' + e.message)) + fin.q('#s-tabella').innerHTML); return }

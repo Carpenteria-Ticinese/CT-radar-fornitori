@@ -6,17 +6,17 @@
   <title>Acquisti · Carpenteria Ticinese</title>
   <meta name="robots" content="noindex" />
   <meta name="theme-color" content="#138d90" />
-  <link rel="manifest" href="manifest.json?v=3" />
-  <link rel="icon" type="image/png" sizes="32x32" href="icone/icona-32.png?v=3" />
-  <link rel="apple-touch-icon" href="icone/icona-180.png?v=3" />
+  <link rel="manifest" href="manifest.json?v=4" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icone/icona-32.png?v=4" />
+  <link rel="apple-touch-icon" href="icone/icona-180.png?v=4" />
   <meta name="apple-mobile-web-app-title" content="Acquisti" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <!-- ?v= : forza il browser a riprendere CSS/JS aggiornati. index.html resta in
        cache: dopo ogni caricamento su GitHub si apre con Ctrl+F5. -->
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
-<body data-versione="3">
+<body data-versione="4">
 
 <!-- ═══ LOGIN ═══════════════════════════════════════════════════════════════ -->
 <section id="pagina-login" class="pagina-centro" hidden>
@@ -60,6 +60,7 @@
     <button type="button" data-vista="importa">📥 Importa offerta</button>
     <button type="button" data-vista="variazioni">📈 Variazioni</button>
     <button type="button" data-vista="fornitori">🏭 Fornitori</button>
+    <button type="button" data-vista="documenti">📄 Documenti</button>
     <button type="button" data-vista="richieste">📝 Richiesta d'offerta</button>
     <button type="button" data-vista="impostazioni" id="menu-impostazioni" hidden>⚙️ Impostazioni</button>
   </nav>
@@ -72,6 +73,7 @@
     <div id="vista-variazioni" class="vista" hidden></div>
     <div id="vista-fornitori" class="vista" hidden></div>
     <div id="vista-fornitore" class="vista" hidden></div>
+    <div id="vista-documenti" class="vista" hidden></div>
     <div id="vista-richieste" class="vista" hidden></div>
     <div id="vista-impostazioni" class="vista" hidden></div>
   </main>
@@ -83,14 +85,15 @@
 <!-- Supabase (versione fissa). SheetJS, pdf.js e Chart.js si caricano solo
      quando servono (vedi caricaLibreria in base.js). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="calcolo.js?v=3"></script>
-<script src="base.js?v=3"></script>
-<script src="cerca.js?v=3"></script>
-<script src="fornitori.js?v=3"></script>
-<script src="importa.js?v=3"></script>
-<script src="variazioni.js?v=3"></script>
-<script src="richieste.js?v=3"></script>
-<script src="impostazioni.js?v=3"></script>
-<script src="avvio.js?v=3"></script>
+<script src="calcolo.js?v=4"></script>
+<script src="base.js?v=4"></script>
+<script src="cerca.js?v=4"></script>
+<script src="fornitori.js?v=4"></script>
+<script src="importa.js?v=4"></script>
+<script src="variazioni.js?v=4"></script>
+<script src="richieste.js?v=4"></script>
+<script src="documenti.js?v=4"></script>
+<script src="impostazioni.js?v=4"></script>
+<script src="avvio.js?v=4"></script>
 </body>
 </html>

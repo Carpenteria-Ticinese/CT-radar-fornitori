@@ -284,7 +284,8 @@ async function disegnaFornitore(param) {
         return '<tr><td data-et="Tipo">' + esc(d.tipo) + (d.versione > 1 ? ' · versione ' + d.versione : '') + '</td>' +
           '<td data-et="Numero">' + esc(d.numero || '–') + '</td><td data-et="Data">' + RFC.fmtData(d.data_documento) + '</td>' +
           '<td data-et="Chi" class="nowrap">' + esc(RFC.timbro(d.creato_iniziali, d.creato_il)) + '</td>' +
-          '<td>' + (d.percorso ? '<button type="button" class="btn btn-piccolo" data-doc="' + esc(d.percorso) + '">📄 Apri</button>' : '') + '</td></tr>'
+          '<td><div class="gruppo-btn">' + (d.percorso ? '<button type="button" class="btn btn-piccolo" data-doc="' + esc(d.percorso) + '">📄 Apri</button>' : '') +
+            '<button type="button" class="btn btn-piccolo" data-doc-prezzi="' + esc(d.id) + '" data-doc-nome="' + esc(d.nome_file || d.numero || d.tipo) + '">🏷️ I suoi prezzi</button></div></td></tr>'
       }).join('') + '</tbody></table></div></div>' : '') +
 
     '<div class="barra-azioni non-stampare">' +
@@ -295,6 +296,9 @@ async function disegnaFornitore(param) {
 
   el('fs-indietro').addEventListener('click', function () { vai('fornitori') })
   v.querySelectorAll('[data-doc]').forEach(function (b) { b.addEventListener('click', function () { apriDocumento(b.dataset.doc) }) })
+  v.querySelectorAll('[data-doc-prezzi]').forEach(function (b) {
+    b.addEventListener('click', function () { finestraPrezziDocumento(b.dataset.docPrezzi, b.dataset.docNome) })
+  })
 
   var votoScelto = null
   v.querySelectorAll('[data-voto]').forEach(function (b) {
