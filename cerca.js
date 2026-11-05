@@ -54,11 +54,14 @@ function avvisiArticolo(a) {
   if (!a.n_foto && a.tipo === 'Materiale') t.push(tag('', '📷', 'Foto da aggiungere'))   // servizi e subappalti: niente foto
   if (!a.n_prezzi) { if (!nv) t.push(tag('', '∅', 'Nessun prezzo')) }
   else if (!a.preferito_fornitore_id) t.push(tag('warn', '⭐', 'Nessun preferito'))
-  if (a.preferito_scaduto) t.push(tag('warn', '⏰', 'Offerta scaduta'))
-  if (a.preferito_vecchio) t.push(tag('warn', '🕰️', 'Prezzo vecchio'))
-  if (a.preferito_sconto_noto === false) t.push(tag('warn', '❔', 'Sconto non noto'))
+  // Gli avvisi parlano del prezzo usato, non di un altro.
+  var u = a.usato && a.usato.riga
+  if (u && u.scaduto) t.push(tag('warn', '⏰', 'Offerta scaduta'))
+  if (u && dataIgnota(u.data_prezzo)) t.push(tag('warn', '📅', 'Senza data certa'))
+  else if (u && u.vecchio) t.push(tag('warn', '🕰️', 'Prezzo vecchio'))
+  if (u && u.sconto_noto === false) t.push(tag('warn', '❔', 'Sconto non noto'))
   if (a.preferito_senza_fattore) t.push(tag('err', '📏', 'Unità senza fattore'))
-  if (a.preferito_solo_pacchi) t.push(tag('info', '📦', 'Solo pacchi interi'))
+  if (u && u.solo_pacchi_interi) t.push(tag('info', '📦', 'Solo pacchi interi'))
   return t.join(' ')
 }
 
@@ -83,6 +86,16 @@ function filtraArticoli() {
   })
 }
 
+// Elenco di Cerca: la stessa cifra della scheda e dell'offerta (prezzo arrivato, netto accanto).
+function prezzoElenco(a) {
+  var u = a.usato || {}, r = u.riga
+  if (!r) return '<span class="dim">' + esc(a.n_righe_prezzo ? u.motivo : 'Nessun prezzo') + '</span>'
+  return '<strong>' + RFC.fmt(r.arrivato_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
+    '<span class="piccolo">arrivato · netto ' + RFC.fmt(r.netto_chf) + '</span><br>' +
+    '<span class="piccolo">' + (r.preferito ? '⭐ ' : '') + esc(r.fornitore_nome || '') + ' · ' + dataPrezzoTesto(r) + '</span>' +
+    (u.daVerificare ? '<br><span class="piccolo">⚠️ da verificare</span>' : '')
+}
+
 async function elencoCerca() {
   var trovati = filtraArticoli()
   var cf = conteggiFiltri()
@@ -96,16 +109,7 @@ async function elencoCerca() {
   html('c-conteggio', trovati.length + (trovati.length === 1 ? ' articolo' : ' articoli') + esc(spiega))
   var mostrati = trovati.slice(0, CERCA.quanti)
   html('c-risultati', mostrati.map(function (a) {
-    var prezzo = a.preferito_chf != null
-      ? '<strong>' + RFC.fmt(a.preferito_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
-        '<span class="piccolo">⭐ ' + esc(a.preferito_nome || '') + ' · ' + RFC.fmtData(a.preferito_data) + '</span>'
-      : a.migliore_chf != null
-        ? '<strong>' + RFC.fmt(a.migliore_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
-          '<span class="piccolo">più conveniente: ' + esc(a.migliore_nome || '') + '</span>'
-        : a.da_verificare_chf != null
-          ? '<strong>' + RFC.fmt(a.da_verificare_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
-            '<span class="piccolo">⚠️ da verificare</span>'
-          : '<span class="dim">Nessun prezzo</span>'
+    var prezzo = prezzoElenco(a)
     return '<button type="button" class="riga" data-id="' + a.id + '">' +
       '<div class="foto-mini" data-foto="' + esc(a.foto_principale || '') + '">' + (a.foto_principale || a.tipo !== 'Materiale' ? '' : '<span aria-hidden="true">📷</span>') + '</div>' +
       '<div class="corpo"><div class="codice">' + esc(a.codice) + '</div>' +
@@ -168,11 +172,15 @@ async function disegnaArticolo(id) {
   // Con le RLS un accesso negato dà zero righe senza errore: «nessun prezzo» si scrive solo se è vero.
   var prezziPersi = r[3].error || (!tutti.length && attesi() > 0)
   var storicoPerso = r[4].error || (!storico.length && (tutti.length > 0 || attesi() > 0))
+  var usato = prezzoUsato(tutti)
+  var idUsato = usato.riga ? usato.riga.id : null
+  a.usato = usato; a.n_righe_prezzo = tutti.length   // tornando all'elenco si vede la stessa cifra
 
   v.innerHTML =
     '<div class="gruppo-btn non-stampare" style="margin-bottom:12px"><button type="button" class="btn" id="a-indietro">← Cerca</button></div>' +
     '<div class="scheda">' +
       '<div class="intestazione"><h1><span class="mono">' + esc(art.codice) + '</span><br>' + esc(art.descrizione) + '</h1></div>' +
+      (prezziPersi ? '' : rigaPrezzoUsato(usato, art, storico, tutti.length)) +
       '<div class="tags" style="margin-bottom:12px">' + avvisiArticolo(a) + '</div>' +
       '<div id="a-foto"></div>' +
       '<div class="griglia" style="margin-top:12px">' +
@@ -195,16 +203,16 @@ async function disegnaArticolo(id) {
         (prezzi.length
           ? '<p class="aiuto">Conveniente = prezzo ARRIVATO in CHF: netto (convertito se in EUR, cambio ' +
               RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + ') + costo di arrivo stimato del fornitore.</p>' +
-            tabellaConfronto(prezzi, art)
+            tabellaConfronto(prezzi, art, idUsato)
           : '<p class="aiuto">Nessun prezzo confermato.</p>') +
         (daVerificare.length ? '<div id="a-daverificare">' +
           '<h3 class="gruppo-prezzi">⚠️ Da verificare (' + daVerificare.length + ')</h3>' +
-          '<p class="aiuto">Non sono confermati: restano fuori dal confronto. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
-          tabellaDaVerificare(daVerificare, art) +
+          '<p class="aiuto">Non sono confermati. Si usano solo se non c\'è nessun prezzo confermato, e allora si vede un avviso. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
+          tabellaDaVerificare(daVerificare, art, false, idUsato) +
         '</div>' : '') +
         (altri.length ? '<div id="a-altri">' +
           '<h3 class="gruppo-prezzi">📦 Fornitore archiviato o da scegliere (' + altri.length + ')</h3>' +
-          '<p class="aiuto">Prezzi confermati, ma il fornitore non è fra quelli attivi: restano fuori dal confronto.</p>' +
+          '<p class="aiuto">Prezzi confermati, ma il fornitore non è fra quelli attivi: non si usano.</p>' +
           tabellaDaVerificare(altri, art, true) +
         '</div>' : '')) +
     '</div>' +
@@ -214,7 +222,7 @@ async function disegnaArticolo(id) {
         : 'Ci sono prezzi, ma non leggo il loro storico: esci e rientra; se continua, avvisa il titolare.')
       : !storico.length ? '<div class="vuoto">Nessun prezzo nello storico.</div>'
       : '<p class="aiuto">Prezzo netto per ' + esc(art.unita) + ' in CHF (gli EUR al cambio di oggi), senza le variazioni da mail. Dal più recente.</p>' +
-        tabellaStorico(storico, art)) +
+        tabellaStorico(storico, art, idUsato)) +
     '</div>' +
     '<div class="barra-azioni non-stampare">' +
       '<div class="gruppo-btn">' +
@@ -256,7 +264,7 @@ async function disegnaArticolo(id) {
   })
 }
 
-function tabellaConfronto(prezzi, art) {
+function tabellaConfronto(prezzi, art, idUsato) {
   if (!prezzi.length) return '<div class="vuoto">Nessun prezzo. I prezzi entrano con «📥 Importa offerta» oppure «✍️ Prezzo a mano».</div>'
   return '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
     '<th>#</th><th>Fornitore</th><th>Voce del fornitore</th><th class="num">Listino e sconti</th>' +
@@ -271,7 +279,8 @@ function tabellaConfronto(prezzi, art) {
                     p.rincaro ? '+' + RFC.fmt(p.rincaro, 2) + '%' : '', p.extra ? '+' + RFC.fmt(p.extra) + ' extra' : ''].filter(Boolean).join(' ')
       return '<tr class="' + (p.preferito ? 'preferito' : '') + '">' +
         '<td data-et="Posizione">' + p.posizione + '</td>' +
-        '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' + (p.preferito ? '<br>' + tag('ok', '⭐', 'Preferito') : '') + '</td>' +
+        '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' + (p.preferito ? '<br>' + tag('ok', '⭐', 'Preferito') : '') +
+          (p.id === idUsato ? '<br>' + tag('ok', '💰', 'Prezzo usato') : '') + '</td>' +
         '<td data-et="Voce">' + esc([p.marca, p.codice_fornitore].filter(Boolean).join(' · ')) +
           (p.descrizione_fornitore ? '<br><span class="dim piccolo">' + esc(p.descrizione_fornitore) + '</span>' : '') +
           (p.unita_fornitore && p.fattore !== 1 ? '<br><span class="piccolo">1 ' + esc(p.unita_fornitore) + ' = ' + (p.fattore ? RFC.fmt(p.fattore, 4) + ' ' + esc(art.unita) : '?') + '</span>' : '') + '</td>' +
@@ -285,6 +294,25 @@ function tabellaConfronto(prezzi, art) {
         '<td data-et="Avvisi"><div class="tags">' + avvisiPrezzo(p) + '</div>' +
           (p.documento_percorso ? '<div style="margin-top:6px">' + bottoneProva(p) + '</div>' : '') + '</td></tr>'
     }).join('') + '</tbody></table></div>'
+}
+
+// In cima alla scheda: il prezzo usato, lo stesso che prende l'offerta (regola_prezzo.js).
+function rigaPrezzoUsato(s, art, storico, nRighe) {
+  var r = s.riga
+  if (!r) {
+    return '<div class="prezzo-usato" id="a-prezzo-usato"><strong>💰 Prezzo usato: nessuno.</strong> ' +
+      esc(nRighe ? s.motivo : 'Per questo articolo non c\'è nessun prezzo.') + '</div>'
+  }
+  var origine = storico.filter(function (x) { return x.id === r.id })[0] || { origine_letta: false }
+  var perche = r.preferito ? tag('ok', '⭐', 'Preferito') : s.daVerificare ? '' : tag('info', '📉', 'Il più conveniente')
+  return '<div class="prezzo-usato" id="a-prezzo-usato">' +
+    '<div class="prezzo-usato-cifra">💰 Prezzo usato: <strong>' + RFC.fmt(r.arrivato_chf) + ' CHF</strong> / ' + esc(art.unita) +
+      ' arrivato <span class="prezzo-usato-netto">(netto ' + RFC.fmt(r.netto_chf) + ')</span></div>' +
+    '<div>Fornitore: <strong>' + esc(r.fornitore_nome) + '</strong> ' + perche + '</div>' +
+    '<div>' + (dataIgnota(r.data_prezzo) ? '' : 'Data: ') + dataPrezzoTesto(r) + '</div>' +
+    '<div class="origine">Da dove viene: ' + daDoveViene(origine) + '</div>' +
+    (s.daVerificare ? banner('warn', '<strong>Prezzo da verificare.</strong> Non c\'è nessun prezzo confermato: si usa questo, anche nelle offerte. Controllalo e premi «✅ Conferma».') : '') +
+    '</div>'
 }
 
 // «3 fornitori, 5 prezzi: Alfa, Beta, Gamma»
@@ -331,24 +359,25 @@ function prezzoStoricoTesto(x, art) {
     '<br>' + tag('err', '📏', 'Unità senza fattore')
 }
 
-function tabellaStorico(righe, art) {
+function tabellaStorico(righe, art, idUsato) {
   return '<div class="tabella-wrap"><table class="tab a-schede" id="a-storico-tabella"><thead><tr>' +
-    '<th>Data</th><th>Fornitore</th><th class="num">Prezzo</th><th>Da dove viene</th></tr></thead><tbody>' +
+    '<th>Data</th><th>Fornitore</th><th class="num">Prezzo netto</th><th>Da dove viene</th></tr></thead><tbody>' +
     righe.map(function (x) {
       return '<tr class="' + (x.stato === 'sostituito' ? 'sostituito' : '') + '">' +
         '<td data-et="Data">' + dataPrezzoTesto(x) + '</td>' +
         '<td data-et="Fornitore"><strong>' + esc(x.fornitore_nome) + '</strong><div class="tags">' +
+          (x.id === idUsato ? tag('ok', '💰', 'Prezzo usato') : '') +
           (x.stato === 'attivo' ? tag('ok', '✔️', 'Attivo') : tag('', '↪️', 'Sostituito')) +
           (x.variante ? tag('', '🔀', 'Variante') : '') +
           (x.da_verificare && x.stato === 'attivo' ? tag('warn', '⚠️', 'Da verificare') : '') + '</div></td>' +
-        '<td data-et="Prezzo" class="num">' + prezzoStoricoTesto(x, art) + '</td>' +
+        '<td data-et="Prezzo netto" class="num">' + prezzoStoricoTesto(x, art) + '</td>' +
         '<td data-et="Da dove viene" class="origine">' + daDoveViene(x) + '</td></tr>'
     }).join('') + '</tbody></table></div>'
 }
 
 // Prezzi «da verificare» di un articolo: si vedono, ma non stanno nel confronto.
 // soloLettura: prezzi già confermati di un fornitore archiviato o da scegliere: niente da confermare.
-function tabellaDaVerificare(prezzi, art, soloLettura) {
+function tabellaDaVerificare(prezzi, art, soloLettura, idUsato) {
   return '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
     '<th>Fornitore</th><th>Voce</th><th class="num">Listino e sconti</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th>' +
     '<th>Data</th><th>Perché</th><th></th></tr></thead><tbody>' +
@@ -356,7 +385,9 @@ function tabellaDaVerificare(prezzi, art, soloLettura) {
       var s1 = Number(p.sconto1_usato) || 0
       return '<tr>' +
         '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' +
-          (p.fornitore_fuori && !soloLettura ? '<br>' + tag('warn', '❔', 'Fornitore da scegliere') : '') + '</td>' +
+          (p.fornitore_fuori && !soloLettura ? '<br>' + tag('warn', '❔', 'Fornitore da scegliere') : '') +
+          (p.fornitore_archiviato && !soloLettura ? '<br>' + tag('', '📦', 'Fornitore archiviato: non si usa') : '') +
+          (p.id === idUsato ? '<br>' + tag('warn', '💰', 'Prezzo usato') : '') + '</td>' +
         '<td data-et="Voce">' + esc(p.descrizione_fornitore || '–') + (p.nota ? '<br><span class="dim piccolo">' + esc(p.nota) + '</span>' : '') + '</td>' +
         '<td data-et="Listino e sconti" class="num">' + RFC.fmt(p.listino) + ' ' + esc(p.valuta) +
           (s1 ? '<br><span class="piccolo">−' + RFC.fmt(s1, 2) + '%</span>' : '') + '</td>' +
@@ -752,27 +783,26 @@ async function esportaListino() {
   try {
     await caricaLibreria('xlsx')
     if (!(await caricaArticoli(true))) return
-    var righe = [['Codice', 'Descrizione', 'Unità', 'Prezzo preferito CHF', 'Fornitore preferito', 'Data prezzo', 'Avviso']]
+    // La colonna D resta il prezzo (le formule del foglio la leggono): è il prezzo usato, lo stesso dell'offerta. Il netto va in fondo.
+    var righe = [['Codice', 'Descrizione', 'Unità', 'Prezzo usato CHF (arrivato)', 'Fornitore', 'Data prezzo', 'Avviso', 'Netto CHF']]
     RF.articoli.filter(function (a) { return !a.archiviato }).forEach(function (a) {
-      var avv = [], prezzo = null, forn = '', data = ''
-      if (a.preferito_chf != null) {
-        prezzo = RFC.arrotonda(Number(a.preferito_chf), 2); forn = a.preferito_nome || ''; data = RFC.fmtData(a.preferito_data)
-      } else if (a.migliore_chf != null) {
-        prezzo = RFC.arrotonda(Number(a.migliore_chf), 2); forn = a.migliore_nome || ''
-        avv.push('Nessun preferito: prezzo del più conveniente')
-      } else if (a.n_prezzi) {
-        avv.push('Prezzo non confrontabile (unità senza fattore)')
-      } else avv.push('Nessun prezzo')
-      if (a.preferito_scaduto) avv.push('Offerta scaduta')
-      if (a.preferito_vecchio) avv.push('Prezzo vecchio')
-      if (a.preferito_sconto_noto === false) avv.push('Sconto non noto')
-      if (a.preferito_solo_pacchi) avv.push('Solo pacchi interi')
+      var avv = [], prezzo = null, netto = null, forn = '', data = '', s = a.usato || {}, u = s.riga
+      if (u) {
+        prezzo = RFC.arrotonda(Number(u.arrivato_chf), 2); netto = RFC.arrotonda(Number(u.netto_chf), 2)
+        forn = u.fornitore_nome || ''; data = dataIgnota(u.data_prezzo) ? 'Data non nota' : RFC.fmtData(u.data_prezzo)
+        if (s.daVerificare) avv.push('Prezzo da verificare: nessun prezzo confermato')
+        else if (!u.preferito) avv.push('Nessun preferito: prezzo del più conveniente')
+        if (u.scaduto) avv.push('Offerta scaduta')
+        if (u.vecchio && !dataIgnota(u.data_prezzo)) avv.push('Prezzo vecchio')
+        if (u.sconto_noto === false) avv.push('Sconto non noto')
+        if (u.solo_pacchi_interi) avv.push('Solo pacchi interi')
+      } else avv.push(a.n_righe_prezzo ? s.motivo : 'Nessun prezzo')
       if (a.da_verificare) avv.push('Da verificare: ' + a.da_verificare)
-      righe.push([a.codice, a.descrizione, a.unita, prezzo == null ? 'MANCA' : prezzo, forn, data, avv.join(' · ')])
+      righe.push([a.codice, a.descrizione, a.unita, prezzo == null ? 'MANCA' : prezzo, forn, data, avv.join(' · '), netto == null ? '' : netto])
     })
     var wb = XLSX.utils.book_new()
     var ws = XLSX.utils.aoa_to_sheet(righe)
-    ws['!cols'] = [{ wch: 34 }, { wch: 48 }, { wch: 8 }, { wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 50 }]
+    ws['!cols'] = [{ wch: 34 }, { wch: 48 }, { wch: 8 }, { wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 50 }, { wch: 12 }]
     XLSX.utils.book_append_sheet(wb, ws, 'LISTINO_RADAR')
     var come = XLSX.utils.aoa_to_sheet([
       ['Come usarlo'],
@@ -783,7 +813,7 @@ async function esportaListino() {
       ['=SE.ERRORE(INDICE(LISTINO_RADAR!D:D;CONFRONTA(A2;LISTINO_RADAR!A:A;0));"MANCA")'],
       [''],
       ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo.'],
-      ['Il prezzo è in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari e variazioni di oggi. Gli EUR sono convertiti col cambio delle Impostazioni.'],
+      ['Il prezzo è quello che prende l\'offerta: ARRIVATO, in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari, variazioni di oggi e costo di arrivo. Il netto è nell\'ultima colonna. Gli EUR sono convertiti col cambio delle Impostazioni.'],
       ['Esportato il ' + RFC.fmtData(RFC.oggiISO()) + ' · cambio EUR→CHF ' + RF.imp.cambio_eur_chf + ' del ' + RFC.fmtData(RF.imp.cambio_data)],
       ['Ogni volta che i prezzi cambiano, esporta di nuovo e sostituisci il foglio LISTINO_RADAR.']
     ])

@@ -208,6 +208,11 @@ table.tab tr.preferito td { background: var(--primary-lt); }
 
 /* ── Scheda articolo: prezzi ──────────────────────────────────────────── */
 h3.gruppo-prezzi { margin: 18px 0 6px; font-size: 18px; }
+.prezzo-usato { border: 2px solid var(--primary); border-radius: var(--radius); background: var(--primary-lt); padding: 10px 12px; margin-bottom: 12px; }
+.prezzo-usato > div { margin-top: 4px; }
+.prezzo-usato-cifra { font-size: 20px; }
+.prezzo-usato-netto { font-size: 16px; color: var(--text2); }
+.prezzo-usato .origine { overflow-wrap: anywhere; }
 td.origine { overflow-wrap: anywhere; }
 
 /* ── Foto ─────────────────────────────────────────────────────────────── */

@@ -31,7 +31,7 @@ var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 var RF = {
   utente: null, ruolo: null, titolare: false,
   categorie: [], unita: [], imp: null,
-  articoli: [],            // righe di rf_v_articoli
+  articoli: [],            // righe di rf_articoli + conti e prezzo usato (vedi caricaArticoli)
   fornitori: [],           // fornitori della Rubrica + dati Radar (vedi caricaFornitori)
   ditte: [],               // «Ditte da valutare»: NON fornitori, senza contatto in Rubrica
   caricato: { base: false, articoli: false, fornitori: false },
@@ -183,21 +183,61 @@ async function caricaBase(forza) {
   return true
 }
 
+// Legge a pagine: il server dà al massimo 1000 righe per volta.
+async function leggiAPagine(domanda) {
+  var tutti = [], da = 0, PAGINA = 1000
+  for (;;) {
+    var r = await domanda().range(da, da + PAGINA - 1)
+    if (r.error) throw r.error
+    tutti = tutti.concat(r.data || [])
+    if (!r.data || r.data.length < PAGINA) return tutti
+    da += PAGINA
+  }
+}
+
+// Il prezzo usato: UNA regola sola, in regola_prezzo.js, lo stesso file di Preventivi. Qui non si sceglie niente.
+function prezzoUsato(righe) { return window.CTRegolaPrezzo.scegli(righe) }
+var COLONNE_PREZZO_USATO = 'id,articolo_id,fornitore_id,fornitore_nome,arrivato_chf,netto_chf,data_prezzo,data_nel_documento,preferito,da_verificare,' +
+  'variante,articolo_archiviato,fornitore_archiviato,fornitore_fuori,scaduto,vecchio,sconto_noto,solo_pacchi_interi,senza_fattore'
+
 async function caricaArticoli(forza) {
   if (RF.caricato.articoli && !forza) return true
   if (!(await sessioneValida())) return false
-  var tutti = [], da = 0, PAGINA = 1000
-  for (;;) {
-    var r = await sb.from('rf_v_articoli').select('*').order('codice').range(da, da + PAGINA - 1)
-    if (r.error) throw r.error
-    tutti = tutti.concat(r.data || [])
-    if (!r.data || r.data.length < PAGINA) break
-    da += PAGINA
-  }
+  if (!(await caricaBase())) return false
+  // Non si legge più rf_v_articoli (8 secondi a pagina con 1'484 articoli, proprio al limite del database): i conti li fa la pagina dalle stesse righe.
+  var letture = await Promise.all([
+    leggiAPagine(function () { return sb.from('rf_articoli').select('*').order('codice') }),
+    leggiAPagine(function () { return sb.from('rf_v_prezzi_attuali').select(COLONNE_PREZZO_USATO).order('id') }),
+    leggiAPagine(function () { return sb.from('rf_foto_articolo').select('articolo_id,percorso').eq('archiviata', false).order('principale', { ascending: false }).order('creato_il').order('id') }),
+    leggiAPagine(function () { return sb.from('rf_preferiti').select('articolo_id,fornitore_id').order('articolo_id') }),
+    sb.from('rf_prezzi').select('id', { count: 'exact', head: true }).eq('stato', 'attivo')
+  ])
+  var tutti = letture[0], perArticolo = {}, foto = {}, preferiti = {}
   // Con le RLS un accesso negato dà zero righe senza errore: zero articoli non può essere vero.
   if (!tutti.length) throw new Error('nessun articolo letto dal database. Non può essere zero: esci e rientra; se continua, avvisa il titolare.')
+  // Un elenco a metà darebbe un prezzo sbagliato: quante righe ci sono lo dice il database.
+  if (letture[4].error) throw letture[4].error
+  if (letture[4].count !== letture[1].length) {
+    throw new Error('prezzi letti ' + letture[1].length + ' su ' + letture[4].count + ': esci e rientra; se continua, avvisa il titolare.')
+  }
+  letture[1].forEach(function (p) { (perArticolo[p.articolo_id] = perArticolo[p.articolo_id] || []).push(p) })
+  letture[2].forEach(function (f) { (foto[f.articolo_id] = foto[f.articolo_id] || []).push(f.percorso) })
+  letture[3].forEach(function (x) { preferiti[x.articolo_id] = x.fornitore_id })
   tutti.forEach(function (a) {
-    a._cerca = RFC.perRicerca([a.codice, a.descrizione, a.categoria, a.preferito_nome, a.note].join(' '))
+    var righe = perArticolo[a.id] || [], cat = categoriaDaId(a.categoria_id)
+    var pref = righe.filter(function (p) { return p.preferito && !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori })
+    a.categoria = cat ? cat.nome : ''
+    a.gruppo = cat ? cat.gruppo : ''
+    a.foto_principale = foto[a.id] ? foto[a.id][0] : null
+    a.n_foto = foto[a.id] ? foto[a.id].length : 0
+    a.preferito_fornitore_id = preferiti[a.id] || null
+    a.preferito_nome = pref.length ? pref[0].fornitore_nome : null
+    a.preferito_senza_fattore = pref.length > 0 && pref.every(function (p) { return p.senza_fattore })
+    a.n_prezzi = righe.filter(function (p) { return !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori }).length
+    a.n_da_verificare = righe.filter(function (p) { return p.da_verificare }).length
+    a.n_righe_prezzo = righe.length
+    a.usato = prezzoUsato(righe)
+    a._cerca = RFC.perRicerca([a.codice, a.descrizione, a.categoria, a.preferito_nome, a.usato.riga && a.usato.riga.fornitore_nome, a.note].join(' '))
   })
   RF.articoli = tutti
   RF.caricato.articoli = true
