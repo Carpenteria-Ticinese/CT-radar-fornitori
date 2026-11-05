@@ -25,8 +25,8 @@ async function disegnaCerca() {
       '<select id="c-categoria" aria-label="Filtra per categoria"><option value="">Tutte le categorie</option>' + opzioniCategorie(CERCA.categoria) + '</select>' +
     '</div>' +
     '<div class="gruppo-btn" style="margin-bottom:8px">' +
-      '<label class="scelta"><input type="checkbox" id="c-verificare"' + (CERCA.soloVerificare ? ' checked' : '') + '> Solo «Da verificare»</label>' +
-      (RF.titolare ? '<label class="scelta"><input type="checkbox" id="c-archiviati"' + (CERCA.archiviati ? ' checked' : '') + '> Mostra archiviati</label>' : '') +
+      '<label class="scelta"><input type="checkbox" id="c-verificare"' + (CERCA.soloVerificare ? ' checked' : '') + '> Solo «Da verificare» <span id="c-n-verificare"></span></label>' +
+      (RF.titolare ? '<label class="scelta"><input type="checkbox" id="c-archiviati"' + (CERCA.archiviati ? ' checked' : '') + '> Mostra archiviati <span id="c-n-archiviati"></span></label>' : '') +
     '</div>' +
     '<div id="c-conteggio" class="conteggio"></div>' +
     '<div id="c-risultati" class="elenco"></div>'
@@ -51,7 +51,7 @@ function avvisiArticolo(a) {
   if (a.da_verificare) t.push(tag('warn', '❓', 'Da verificare'))
   var nv = Number(a.n_da_verificare) || 0
   if (nv) t.push(tag('warn', '⚠️', nv === 1 ? 'Prezzo da verificare' : nv + ' prezzi da verificare'))
-  if (!a.n_foto) t.push(tag('', '📷', 'Manca la foto'))
+  if (!a.n_foto && a.tipo === 'Materiale') t.push(tag('', '📷', 'Foto da aggiungere'))   // servizi e subappalti: niente foto
   if (!a.n_prezzi) { if (!nv) t.push(tag('', '∅', 'Nessun prezzo')) }
   else if (!a.preferito_fornitore_id) t.push(tag('warn', '⭐', 'Nessun preferito'))
   if (a.preferito_scaduto) t.push(tag('warn', '⏰', 'Offerta scaduta'))
@@ -60,6 +60,18 @@ function avvisiArticolo(a) {
   if (a.preferito_senza_fattore) t.push(tag('err', '📏', 'Unità senza fattore'))
   if (a.preferito_solo_pacchi) t.push(tag('info', '📦', 'Solo pacchi interi'))
   return t.join(' ')
+}
+
+// Conteggi accanto ai filtri (Umberto 5.11.2026: «Da verificare» sembrava mostrare tutto, «Archiviati» non cambiava nulla).
+// Non era un errore: quasi tutti gli articoli sono da verificare e nessuno è archiviato. Ora i numeri lo dicono.
+function eDaVerificare(a) { return !!a.da_verificare || !!Number(a.n_da_verificare) }
+function conteggiFiltri() {
+  var attivi = RF.articoli.filter(function (a) { return !a.archiviato })
+  return {
+    attivi: attivi.length,
+    daVerificare: attivi.filter(eDaVerificare).length,
+    archiviati: RF.articoli.length - attivi.length
+  }
 }
 
 function filtraArticoli() {
@@ -73,7 +85,15 @@ function filtraArticoli() {
 
 async function elencoCerca() {
   var trovati = filtraArticoli()
-  html('c-conteggio', trovati.length + (trovati.length === 1 ? ' articolo' : ' articoli'))
+  var cf = conteggiFiltri()
+  if (el('c-n-verificare')) el('c-n-verificare').textContent = '(' + cf.daVerificare + ' su ' + cf.attivi + ')'
+  if (el('c-n-archiviati')) el('c-n-archiviati').textContent = '(' + cf.archiviati + ')'
+  var spiega = ''
+  if (CERCA.archiviati && !cf.archiviati) spiega = ' · Nessun articolo archiviato: l\'elenco non cambia.'
+  else if (CERCA.archiviati) spiega = ' · compresi ' + cf.archiviati + ' archiviati'
+  if (CERCA.soloVerificare && cf.daVerificare === cf.attivi) spiega += ' · Tutti gli articoli sono da verificare: l\'elenco non cambia.'
+  else if (CERCA.soloVerificare) spiega += ' · ' + cf.daVerificare + ' da verificare su ' + cf.attivi + ': apri un articolo per vedere il perché.'
+  html('c-conteggio', trovati.length + (trovati.length === 1 ? ' articolo' : ' articoli') + esc(spiega))
   var mostrati = trovati.slice(0, CERCA.quanti)
   html('c-risultati', mostrati.map(function (a) {
     var prezzo = a.preferito_chf != null
@@ -87,7 +107,7 @@ async function elencoCerca() {
             '<span class="piccolo">⚠️ da verificare</span>'
           : '<span class="dim">Nessun prezzo</span>'
     return '<button type="button" class="riga" data-id="' + a.id + '">' +
-      '<div class="foto-mini" data-foto="' + esc(a.foto_principale || '') + '">' + (a.foto_principale ? '' : 'Manca foto') + '</div>' +
+      '<div class="foto-mini" data-foto="' + esc(a.foto_principale || '') + '">' + (a.foto_principale || a.tipo !== 'Materiale' ? '' : '<span aria-hidden="true">📷</span>') + '</div>' +
       '<div class="corpo"><div class="codice">' + esc(a.codice) + '</div>' +
         '<div class="desc">' + esc(a.descrizione) + '</div>' +
         '<div class="dim piccolo">' + esc(a.categoria) + ' · ' + esc(a.tipo) + ' · unità ' + esc(a.unita) + '</div>' +
@@ -104,7 +124,9 @@ async function elencoCerca() {
   var nodi = Array.from(el('c-risultati').querySelectorAll('[data-foto]')).filter(function (n) { return n.dataset.foto })
   if (nodi.length) {
     var link = await linkFirmati(BUCKET_FOTO, nodi.map(function (n) { return n.dataset.foto }))
-    nodi.forEach(function (n) { if (link[n.dataset.foto]) n.innerHTML = '<img alt="" loading="lazy" src="' + esc(link[n.dataset.foto]) + '">' })
+    nodi.forEach(function (n) {
+      n.innerHTML = link[n.dataset.foto] ? '<img alt="" loading="lazy" src="' + esc(link[n.dataset.foto]) + '">' : '❌ Errore foto'
+    })
   }
 }
 
@@ -128,6 +150,11 @@ async function disegnaArticolo(id) {
   var prezzi = r[0].data || [], foto = r[1].data || [], art = r[2].data
   var daVerificare = r[3].error ? [] : (r[3].data || [])   // errore = database senza RF_16: la scheda resta come prima
   var cat = categoriaDaId(art.categoria_id)
+  if (!foto.length && Number(a.n_foto) > 0) {   // l'elenco è di prima? si rilegge una volta
+    await caricaArticoli(true)
+    a = articoloDaId(id) || a
+  }
+  var fotoPerse = !foto.length && Number(a.n_foto) > 0
 
   v.innerHTML =
     '<div class="gruppo-btn non-stampare" style="margin-bottom:12px"><button type="button" class="btn" id="a-indietro">← Cerca</button></div>' +
@@ -166,7 +193,7 @@ async function disegnaArticolo(id) {
       '<button type="button" class="btn btn-primario" id="a-modifica">✏️ Modifica</button>' +
     '</div>'
 
-  disegnaFoto(art, foto)
+  disegnaFoto(art, foto, fotoPerse)
   collegaProve(v)
   v.querySelectorAll('[data-conferma]').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -300,16 +327,37 @@ function finestraConfermaPrezzo(p, art) {
 }
 
 // ── Foto ─────────────────────────────────────────────────────────────────────
-async function disegnaFoto(art, foto) {
+// Sotto la foto: categoria, nota, fonte, licenza e autore.
+// Le foto fatte da Umberto e dai suoi non hanno questi dati: non si scrive niente.
+function infoFoto(f) {
+  var cat = f.categoria_foto === 'marca' ? tag('info', '🏷️', 'Foto di marca')
+    : f.categoria_foto === 'foto generica' ? tag('', '🖼️', 'Foto generica') : ''
+  var fonte = /^https?:\/\//i.test(f.fonte_url || '')
+    ? '<a class="btn" href="' + esc(f.fonte_url) + '" target="_blank" rel="noopener noreferrer">🔗 Apri la fonte</a>' : ''
+  var diritti = [f.licenza ? 'Licenza: ' + f.licenza : '', f.autore ? 'Autore: ' + f.autore : ''].filter(Boolean).join(' · ')
+  if (!cat && !f.nota && !fonte && !diritti) return ''
+  return '<div class="foto-info">' + cat +
+    (f.nota ? '<p class="foto-nota">' + esc(f.nota) + '</p>' : '') +
+    (diritti ? '<p class="foto-diritti">' + esc(diritti) + '</p>' : '') +
+    fonte + '</div>'
+}
+
+async function disegnaFoto(art, foto, perse) {
   var box = el('a-foto')
   var percorsi = foto.map(function (f) { return f.percorso })
   var link = percorsi.length ? await linkFirmati(BUCKET_FOTO, percorsi) : {}
+  var NON_DISPONIBILE = '<div class="foto-errore">❌ Foto non disponibile</div>'
+  var vuoto = perse ? banner('err', 'L\'elenco dice che ci sono foto, ma non ne leggo nessuna: esci e rientra; se continua, avvisa il titolare.')
+    : art.tipo === 'Materiale' ? banner('info', '📷 Foto da aggiungere') : ''
   box.innerHTML =
-    (foto.length ? '<img class="foto-grande" alt="Foto principale di ' + esc(art.descrizione) + '" src="' + esc(link[foto[0].percorso] || '') + '">' :
-      banner('info', '📷 Manca la foto. Serve almeno una foto per articolo.')) +
-    (foto.length > 1 || foto.length === 1 ? '<div class="galleria">' + foto.map(function (f) {
-      return '<figure class="' + (f.principale ? 'principale' : '') + '"><img alt="" src="' + esc(link[f.percorso] || '') + '">' +
+    (foto.length ? (link[foto[0].percorso]
+        ? '<img class="foto-grande" alt="Foto principale di ' + esc(art.descrizione) + '" src="' + esc(link[foto[0].percorso]) + '">'
+        : banner('err', 'Foto non disponibile: non riesco ad aprire il file.')) + infoFoto(foto[0]) : vuoto) +
+    (foto.length > 1 || foto.length === 1 ? '<div class="galleria">' + foto.map(function (f, i) {
+      return '<figure class="' + (f.principale ? 'principale' : '') + '">' +
+        (link[f.percorso] ? '<img alt="" src="' + esc(link[f.percorso]) + '">' : NON_DISPONIBILE) +
         '<figcaption>' + (f.principale ? '⭐ Principale' : '') + '<br>' + esc(RFC.timbro(f.creato_iniziali, f.creato_il)) + '</figcaption>' +
+        (i > 0 ? infoFoto(f) : '') +
         '<div class="gruppo-btn">' +
           (f.principale ? '' : '<button type="button" class="btn btn-piccolo" data-principale="' + f.id + '">⭐ Principale</button>') +
           '<button type="button" class="btn btn-piccolo" data-nascondi="' + f.id + '">🙈 Togli</button>' +
@@ -321,7 +369,9 @@ async function disegnaFoto(art, foto) {
       '<label class="btn" for="a-scegli">🖼️ Scegli foto</label>' +
       '<input type="file" id="a-scegli" accept="image/*" multiple hidden>' +
     '</div><div id="a-foto-stato" aria-live="polite"></div>'
-  function carica(ev) { caricaFoto(art, Array.from(ev.target.files || []), foto.length === 0) }
+  // Se ci sono solo foto di catalogo, la prima foto vera passa davanti: quelle di catalogo restano sotto.
+  var soloCatalogo = foto.length > 0 && foto.every(function (f) { return f.catalogo_lotto })
+  function carica(ev) { caricaFoto(art, Array.from(ev.target.files || []), foto.length === 0, soloCatalogo) }
   el('a-scatta').addEventListener('change', carica)
   el('a-scegli').addEventListener('change', carica)
   box.querySelectorAll('[data-principale]').forEach(function (b) {
@@ -341,7 +391,7 @@ async function disegnaFoto(art, foto) {
   })
 }
 
-async function caricaFoto(art, files, primaFoto) {
+async function caricaFoto(art, files, primaFoto, sopraCatalogo) {
   if (!files.length) return
   var stato = el('a-foto-stato')
   try {
@@ -355,8 +405,12 @@ async function caricaFoto(art, files, primaFoto) {
       var ins = await sb.from('rf_foto_articolo').insert({
         articolo_id: art.id, percorso: percorso, principale: primaFoto && i === 0,
         larghezza: c.larghezza, altezza: c.altezza, byte: c.blob.size
-      })
+      }).select('id').single()
       if (ins.error) throw ins.error
+      if (sopraCatalogo && i === 0) {
+        var davanti = await sb.rpc('rf_foto_principale', { p_foto: ins.data.id })
+        if (davanti.error) throw davanti.error
+      }
     }
     await caricaArticoli(true)
     toast('📷 Foto caricata')

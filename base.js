@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 5
+var APP_VERSIONE = 6
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -194,6 +194,8 @@ async function caricaArticoli(forza) {
     if (!r.data || r.data.length < PAGINA) break
     da += PAGINA
   }
+  // Con le RLS un accesso negato dà zero righe senza errore: zero articoli non può essere vero.
+  if (!tutti.length) throw new Error('nessun articolo letto dal database. Non può essere zero: esci e rientra; se continua, avvisa il titolare.')
   tutti.forEach(function (a) {
     a._cerca = RFC.perRicerca([a.codice, a.descrizione, a.categoria, a.preferito_nome, a.note].join(' '))
   })
@@ -342,6 +344,8 @@ function mostraVista(vista, param) {
   }[vista]
   Promise.resolve(f(param)).catch(function (e) {
     console.error(e)
+    var attesa = el('vista-' + vista).querySelector(':scope > .caricamento')   // niente «Carico…» eterno sotto l'errore
+    if (attesa) attesa.remove()
     avvisa('err', esc('Errore: ' + spiegaErrore(e)))
   })
   window.scrollTo(0, 0)
