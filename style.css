@@ -206,6 +206,10 @@ table.tab tr.preferito td { background: var(--primary-lt); }
   table.tab.a-schede td[data-et]::before { content: attr(data-et) ': '; font-weight: 600; color: var(--text2); }
 }
 
+/* ── Scheda articolo: prezzi ──────────────────────────────────────────── */
+h3.gruppo-prezzi { margin: 18px 0 6px; font-size: 18px; }
+td.origine { overflow-wrap: anywhere; }
+
 /* ── Foto ─────────────────────────────────────────────────────────────── */
 .galleria { display: flex; gap: 10px; flex-wrap: wrap; }
 .galleria figure { margin: 0; width: 150px; }

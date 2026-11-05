@@ -1,6 +1,6 @@
 // CT Radar Fornitori — cerca.js
-// Pagina «Cerca», scheda articolo (foto, fornitori in ordine di convenienza,
-// Storico, Preferito, Modifica, Archivia), nuovo articolo, prezzo a mano,
+// Pagina «Cerca», scheda articolo (foto, tutti i fornitori, storico aperto,
+// grafico, Preferito, Modifica, Archivia), nuovo articolo, prezzo a mano,
 // esportazione del listino per l'Excel.
 
 'use strict'
@@ -144,17 +144,30 @@ async function disegnaArticolo(id) {
     sb.from('rf_v_confronto').select('*').eq('articolo_id', id).order('posizione'),
     sb.from('rf_foto_articolo').select('*').eq('articolo_id', id).eq('archiviata', false).order('principale', { ascending: false }).order('creato_il'),
     sb.from('rf_articoli').select('*').eq('id', id).single(),
-    sb.from('rf_v_prezzi_attuali').select('*').eq('articolo_id', id).eq('da_verificare', true).order('data_prezzo', { ascending: false })
+    sb.from('rf_v_prezzi_attuali').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }),
+    sb.from('rf_v_storico').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }).order('creato_il', { ascending: false }),
+    sb.from('rf_prezzi').select('id,origine_riga,nota,sostituito_da,verificato_iniziali').eq('articolo_id', id)
   ])
   r.slice(0, 3).forEach(function (x) { if (x.error) throw x.error })
   var prezzi = r[0].data || [], foto = r[1].data || [], art = r[2].data
-  var daVerificare = r[3].error ? [] : (r[3].data || [])   // errore = database senza RF_16: la scheda resta come prima
+  // Tutti i prezzi attivi di tutti i fornitori: confermati (= il confronto), da verificare, altri (fornitore archiviato o da scegliere).
+  var tutti = r[3].data || []
+  var nelConfronto = {}
+  prezzi.forEach(function (p) { nelConfronto[p.id] = true })
+  var daVerificare = tutti.filter(function (p) { return p.da_verificare })
+  var altri = tutti.filter(function (p) { return !p.da_verificare && !nelConfronto[p.id] })
+  var storico = arricchisciStorico(r[4].data || [], r[5])
+  await aggiungiTestoDocumenti(storico)
   var cat = categoriaDaId(art.categoria_id)
-  if (!foto.length && Number(a.n_foto) > 0) {   // l'elenco è di prima? si rilegge una volta
+  function attesi() { return (Number(a.n_prezzi) || 0) + (Number(a.n_da_verificare) || 0) }
+  if ((!foto.length && Number(a.n_foto) > 0) || (!tutti.length && attesi() > 0)) {   // l'elenco è di prima? si rilegge una volta
     await caricaArticoli(true)
     a = articoloDaId(id) || a
   }
   var fotoPerse = !foto.length && Number(a.n_foto) > 0
+  // Con le RLS un accesso negato dà zero righe senza errore: «nessun prezzo» si scrive solo se è vero.
+  var prezziPersi = r[3].error || (!tutti.length && attesi() > 0)
+  var storicoPerso = r[4].error || (!storico.length && (tutti.length > 0 || attesi() > 0))
 
   v.innerHTML =
     '<div class="gruppo-btn non-stampare" style="margin-bottom:12px"><button type="button" class="btn" id="a-indietro">← Cerca</button></div>' +
@@ -172,20 +185,40 @@ async function disegnaArticolo(id) {
       (art.note ? '<p style="margin-top:12px"><span class="dim">Note:</span> ' + esc(art.note) + '</p>' : '') +
       (art.da_verificare ? banner('warn', '<strong>Da verificare:</strong> ' + esc(art.da_verificare)) : '') +
     '</div>' +
-    '<div class="scheda">' +
-      '<div class="intestazione"><h2>🏭 Fornitori, dal più conveniente</h2></div>' +
-      '<p class="aiuto">Conveniente = prezzo ARRIVATO in CHF: netto (convertito se in EUR, cambio ' +
-        RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + ') + costo di arrivo stimato del fornitore.</p>' +
-      tabellaConfronto(prezzi, art) +
+    '<div class="scheda" id="a-fornitori">' +
+      '<div class="intestazione"><h2>🏭 Tutti i fornitori</h2></div>' +
+      (prezziPersi ? banner('err', r[3].error ? esc('Prezzi non letti: ' + spiegaErrore(r[3].error))
+        : 'L\'elenco dice che ci sono prezzi, ma non ne leggo nessuno: esci e rientra; se continua, avvisa il titolare.')
+      : !tutti.length ? tabellaConfronto([], art)
+      : '<p id="a-riepilogo-fornitori"><strong>' + esc(riepilogoFornitori(tutti)) + '</strong></p>' +
+        '<h3 class="gruppo-prezzi">✅ Confermati, dal più conveniente (' + prezzi.length + ')</h3>' +
+        (prezzi.length
+          ? '<p class="aiuto">Conveniente = prezzo ARRIVATO in CHF: netto (convertito se in EUR, cambio ' +
+              RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + ') + costo di arrivo stimato del fornitore.</p>' +
+            tabellaConfronto(prezzi, art)
+          : '<p class="aiuto">Nessun prezzo confermato.</p>') +
+        (daVerificare.length ? '<div id="a-daverificare">' +
+          '<h3 class="gruppo-prezzi">⚠️ Da verificare (' + daVerificare.length + ')</h3>' +
+          '<p class="aiuto">Non sono confermati: restano fuori dal confronto. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
+          tabellaDaVerificare(daVerificare, art) +
+        '</div>' : '') +
+        (altri.length ? '<div id="a-altri">' +
+          '<h3 class="gruppo-prezzi">📦 Fornitore archiviato o da scegliere (' + altri.length + ')</h3>' +
+          '<p class="aiuto">Prezzi confermati, ma il fornitore non è fra quelli attivi: restano fuori dal confronto.</p>' +
+          tabellaDaVerificare(altri, art, true) +
+        '</div>' : '')) +
     '</div>' +
-    (daVerificare.length ? '<div class="scheda" id="a-daverificare">' +
-      '<div class="intestazione"><h2>⚠️ Prezzi da verificare</h2></div>' +
-      '<p class="aiuto">Non sono confermati: restano fuori dal confronto. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
-      tabellaDaVerificare(daVerificare, art) +
-    '</div>' : '') +
+    '<div class="scheda" id="a-storico">' +
+      '<div class="intestazione"><h2>📜 Storico dei prezzi</h2></div>' +
+      (storicoPerso ? banner('err', r[4].error ? esc('Storico non letto: ' + spiegaErrore(r[4].error))
+        : 'Ci sono prezzi, ma non leggo il loro storico: esci e rientra; se continua, avvisa il titolare.')
+      : !storico.length ? '<div class="vuoto">Nessun prezzo nello storico.</div>'
+      : '<p class="aiuto">Prezzo netto per ' + esc(art.unita) + ' in CHF (gli EUR al cambio di oggi), senza le variazioni da mail. Dal più recente.</p>' +
+        tabellaStorico(storico, art)) +
+    '</div>' +
     '<div class="barra-azioni non-stampare">' +
       '<div class="gruppo-btn">' +
-        '<button type="button" class="btn" id="a-storico">📊 Storico</button>' +
+        '<button type="button" class="btn" id="a-grafico">📊 Grafico dei prezzi</button>' +
         '<button type="button" class="btn" id="a-preferito">⭐ Cambia preferito</button>' +
         '<button type="button" class="btn" id="a-manuale">✍️ Prezzo a mano</button>' +
         (RF.titolare ? '<button type="button" class="btn btn-pericolo" id="a-archivia">' + (art.archiviato ? '↩️ Ripristina' : '📦 Archivia') + '</button>' : '') +
@@ -202,7 +235,7 @@ async function disegnaArticolo(id) {
     })
   })
   el('a-indietro').addEventListener('click', function () { vai('cerca') })
-  el('a-storico').addEventListener('click', function () { finestraStorico(art) })
+  el('a-grafico').addEventListener('click', function () { finestraGrafico(art) })
   el('a-preferito').addEventListener('click', function () { finestraPreferito(art, prezzi) })
   el('a-manuale').addEventListener('click', function () { finestraPrezzoManuale(art) })
   el('a-modifica').addEventListener('click', function () {
@@ -254,8 +287,68 @@ function tabellaConfronto(prezzi, art) {
     }).join('') + '</tbody></table></div>'
 }
 
+// «3 fornitori, 5 prezzi: Alfa, Beta, Gamma»
+function riepilogoFornitori(tutti) {
+  var nomi = {}
+  tutti.forEach(function (p) { nomi[p.fornitore_id] = p.fornitore_nome })
+  var n = Object.keys(nomi).length
+  return n + (n === 1 ? ' fornitore, ' : ' fornitori, ') + tutti.length + (tutti.length === 1 ? ' prezzo: ' : ' prezzi: ') +
+    Object.keys(nomi).map(function (k) { return nomi[k] }).sort(function (a, b) { return String(a).localeCompare(String(b), 'it') }).join(', ')
+}
+
+// Storico: alle righe di rf_v_storico si aggiungono origine, nota e conferma, che stanno su rf_prezzi.
+function arricchisciStorico(righe, prezziRisposta) {
+  var perId = {}, prima = {}
+  ;(prezziRisposta.data || []).forEach(function (q) {
+    perId[q.id] = q
+    if (q.sostituito_da && q.origine_riga) prima[q.sostituito_da] = q.origine_riga
+  })
+  return righe.map(function (x) {
+    var q = perId[x.id] || {}
+    return Object.assign({}, x, { origine_riga: q.origine_riga, nota: q.nota, verificato_iniziali: q.verificato_iniziali,
+                                  origine_prima: prima[x.id], origine_letta: !prezziRisposta.error })
+  })
+}
+
+// «A mano» è scritto solo nel testo del documento senza file (vedi finestraPrezzoManuale). Se non si legge resta «Altro documento»: vero anche così.
+async function aggiungiTestoDocumenti(storico) {
+  var ids = Array.from(new Set(storico.filter(function (x) { return x.documento_id && x.documento_tipo === 'altro' && !x.documento_percorso })
+    .map(function (x) { return x.documento_id })))
+  if (!ids.length) return
+  var d = await sb.from('rf_documenti').select('id,testo').in('id', ids)
+  var testi = {}
+  ;(d.data || []).forEach(function (t) { testi[t.id] = t.testo })
+  storico.forEach(function (x) { x.documento_testo = testi[x.documento_id] })
+}
+
+function prezzoStoricoTesto(x, art) {
+  if (x.netto_chf_cambio_oggi != null) {
+    return '<strong>' + RFC.fmt(x.netto_chf_cambio_oggi) + ' CHF</strong> / ' + esc(art.unita) +
+      (x.valuta && x.valuta !== 'CHF' ? '<br><span class="piccolo">' + prezzoTesto(x.netto_base, x.valuta) +
+        (x.unita_fornitore ? ' / ' + esc(x.unita_fornitore) : '') + '</span>' : '')
+  }
+  return prezzoTesto(x.netto_base, x.valuta) + ' / ' + esc(x.unita_fornitore || 'unità non indicata') +
+    '<br>' + tag('err', '📏', 'Unità senza fattore')
+}
+
+function tabellaStorico(righe, art) {
+  return '<div class="tabella-wrap"><table class="tab a-schede" id="a-storico-tabella"><thead><tr>' +
+    '<th>Data</th><th>Fornitore</th><th class="num">Prezzo</th><th>Da dove viene</th></tr></thead><tbody>' +
+    righe.map(function (x) {
+      return '<tr class="' + (x.stato === 'sostituito' ? 'sostituito' : '') + '">' +
+        '<td data-et="Data">' + dataPrezzoTesto(x) + '</td>' +
+        '<td data-et="Fornitore"><strong>' + esc(x.fornitore_nome) + '</strong><div class="tags">' +
+          (x.stato === 'attivo' ? tag('ok', '✔️', 'Attivo') : tag('', '↪️', 'Sostituito')) +
+          (x.variante ? tag('', '🔀', 'Variante') : '') +
+          (x.da_verificare && x.stato === 'attivo' ? tag('warn', '⚠️', 'Da verificare') : '') + '</div></td>' +
+        '<td data-et="Prezzo" class="num">' + prezzoStoricoTesto(x, art) + '</td>' +
+        '<td data-et="Da dove viene" class="origine">' + daDoveViene(x) + '</td></tr>'
+    }).join('') + '</tbody></table></div>'
+}
+
 // Prezzi «da verificare» di un articolo: si vedono, ma non stanno nel confronto.
-function tabellaDaVerificare(prezzi, art) {
+// soloLettura: prezzi già confermati di un fornitore archiviato o da scegliere: niente da confermare.
+function tabellaDaVerificare(prezzi, art, soloLettura) {
   return '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
     '<th>Fornitore</th><th>Voce</th><th class="num">Listino e sconti</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th>' +
     '<th>Data</th><th>Perché</th><th></th></tr></thead><tbody>' +
@@ -263,17 +356,19 @@ function tabellaDaVerificare(prezzi, art) {
       var s1 = Number(p.sconto1_usato) || 0
       return '<tr>' +
         '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' +
-          (p.fornitore_fuori ? '<br>' + tag('warn', '❔', 'Fornitore da scegliere') : '') + '</td>' +
+          (p.fornitore_fuori && !soloLettura ? '<br>' + tag('warn', '❔', 'Fornitore da scegliere') : '') + '</td>' +
         '<td data-et="Voce">' + esc(p.descrizione_fornitore || '–') + (p.nota ? '<br><span class="dim piccolo">' + esc(p.nota) + '</span>' : '') + '</td>' +
         '<td data-et="Listino e sconti" class="num">' + RFC.fmt(p.listino) + ' ' + esc(p.valuta) +
           (s1 ? '<br><span class="piccolo">−' + RFC.fmt(s1, 2) + '%</span>' : '') + '</td>' +
         '<td data-et="Netto" class="num">' + prezzoTesto(p.netto_oggi, p.valuta) + '</td>' +
         '<td data-et="CHF per unità" class="num"><strong>' + (p.netto_chf != null ? RFC.fmt(p.netto_chf) : '–') + '</strong></td>' +
         '<td data-et="Data">' + dataPrezzoTesto(p) + '</td>' +
-        '<td data-et="Perché"><div class="tags">' + tag('warn', '⚠️', 'Da verificare') + '</div>' +
+        '<td data-et="Perché"><div class="tags">' + (soloLettura
+            ? (p.fornitore_fuori ? tag('warn', '❔', 'Fornitore da scegliere') : tag('', '📦', 'Fornitore archiviato'))
+            : tag('warn', '⚠️', 'Da verificare')) + '</div>' +
           (p.da_verificare_motivo ? '<span class="piccolo">' + esc(p.da_verificare_motivo) + '</span>' : '') + '</td>' +
         '<td data-et="Azioni" class="non-stampare"><div class="gruppo-btn">' +
-          '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">✅ Conferma</button>' +
+          (soloLettura ? '' : '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">✅ Conferma</button>') +
           bottoneProva(p) + '</div></td></tr>'
     }).join('') + '</tbody></table></div>'
 }
@@ -420,48 +515,34 @@ async function caricaFoto(art, files, primaFoto, sopraCatalogo) {
   }
 }
 
-// ── Storico (nascosto: si apre col pulsante) ────────────────────────────────
-async function finestraStorico(art) {
+// ── Grafico dei prezzi (la tabella dello storico è aperta nella scheda) ─────
+async function finestraGrafico(art) {
   if (!(await sessioneValida())) return
   var r = await sb.from('rf_v_storico').select('*').eq('articolo_id', art.id).order('data_prezzo').order('creato_il')
-  if (r.error) return avvisa('err', esc('Storico non disponibile: ' + spiegaErrore(r.error)))
+  if (r.error) return avvisa('err', esc('Grafico non disponibile: ' + spiegaErrore(r.error)))
   var righe = r.data || []
   var fornitori = {}
   righe.forEach(function (x) { fornitori[x.fornitore_id] = x.fornitore_nome })
   var fin = apriFinestra({
-    titolo: '📊 Storico — ' + art.codice, larga: true,
+    titolo: '📊 Grafico dei prezzi — ' + art.codice, larga: true,
     html:
       '<label for="s-filtro">Fornitore</label><select id="s-filtro"><option value="">Tutti i fornitori</option>' +
         Object.keys(fornitori).map(function (k) { return '<option value="' + k + '">' + esc(fornitori[k]) + '</option>' }).join('') + '</select>' +
+      '<div id="s-avviso"></div>' +
       '<div style="height:280px;margin:16px 0"><canvas id="s-grafico" aria-label="Grafico dell\'andamento dei prezzi"></canvas></div>' +
-      '<p class="aiuto">Prezzo netto per ' + esc(art.unita) + ' in CHF (gli EUR al cambio di oggi), senza le variazioni da mail.</p>' +
-      '<div id="s-tabella"></div>'
+      '<p class="aiuto">Prezzo netto per ' + esc(art.unita) + ' in CHF (gli EUR al cambio di oggi), senza le variazioni da mail.</p>'
   })
   var grafico = null
   function disegna() {
     var filtro = fin.q('#s-filtro').value
     var sel = righe.filter(function (x) { return !filtro || x.fornitore_id === filtro })
-    html(fin.q('#s-tabella'), sel.length ? '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
-      '<th>Data</th><th>Fornitore</th><th class="num">Listino</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th><th>Stato</th><th>Documento</th><th>Chi</th></tr></thead><tbody>' +
-      sel.slice().reverse().map(function (x) {
-        return '<tr class="' + (x.stato === 'sostituito' ? 'sostituito' : '') + '">' +
-          '<td data-et="Data">' + dataPrezzoTesto(x) + '</td>' +
-          '<td data-et="Fornitore">' + esc(x.fornitore_nome) + (x.variante ? ' ' + tag('', '🔀', 'Variante') : '') +
-            (x.da_verificare && x.stato === 'attivo' ? ' ' + tag('warn', '⚠️', 'Da verificare') : '') + '</td>' +
-          '<td data-et="Listino" class="num">' + prezzoTesto(x.listino, x.valuta) + '</td>' +
-          '<td data-et="Netto" class="num">' + prezzoTesto(x.netto_base, x.valuta) + '</td>' +
-          '<td data-et="CHF" class="num">' + (x.netto_chf_cambio_oggi != null ? RFC.fmt(x.netto_chf_cambio_oggi) : '–') + '</td>' +
-          '<td data-et="Stato">' + (x.stato === 'attivo' ? tag('ok', '✔️', 'Attivo') : tag('', '↪️', 'Sostituito')) + '</td>' +
-          '<td data-et="Documento">' + esc([x.documento_tipo, x.documento_numero].filter(Boolean).join(' ')) +
-            (x.documento_percorso ? '<br>' + bottoneProva(x) : '') + '</td>' +
-          '<td data-et="Chi" class="nowrap">' + esc(RFC.timbro(x.creato_iniziali, x.creato_il)) + '</td></tr>'
-      }).join('') + '</tbody></table></div>' : '<div class="vuoto">Nessun prezzo.</div>')
-    collegaProve(fin.q('#s-tabella'))
     // nel grafico solo i prezzi con una data vera
-    disegnaGrafico(sel.filter(function (x) { return !dataIgnota(x.data_prezzo) }))
+    var conData = sel.filter(function (x) { return !dataIgnota(x.data_prezzo) })
+    html(fin.q('#s-avviso'), conData.length ? '' : banner('info', 'Nessun prezzo con una data certa: il grafico resta vuoto.'))
+    disegnaGrafico(conData)
   }
   async function disegnaGrafico(sel) {
-    try { await caricaLibreria('chart') } catch (e) { html(fin.q('#s-tabella'), banner('warn', esc('Grafico non disponibile: ' + e.message)) + fin.q('#s-tabella').innerHTML); return }
+    try { await caricaLibreria('chart') } catch (e) { html(fin.q('#s-avviso'), banner('warn', esc('Grafico non disponibile: ' + e.message))); return }
     var date = Array.from(new Set(sel.map(function (x) { return x.data_prezzo }))).sort()
     var perForn = {}
     sel.forEach(function (x) {
@@ -493,7 +574,7 @@ async function finestraStorico(art) {
 function finestraPreferito(art, prezzi) {
   var forn = []
   prezzi.forEach(function (p) { if (!forn.some(function (f) { return f.fornitore_id === p.fornitore_id })) forn.push(p) })
-  if (!forn.length) return toast('Nessun fornitore con un prezzo: prima importa un\'offerta.')
+  if (!forn.length) return toast('Nessun fornitore con un prezzo confermato: prima conferma un prezzo o importa un\'offerta.')
   apriFinestra({
     titolo: '⭐ Cambia preferito — ' + art.codice,
     html: '<p class="aiuto">Il preferito è il fornitore che consegna anche piccole quantità. Un solo preferito per articolo.</p>' +

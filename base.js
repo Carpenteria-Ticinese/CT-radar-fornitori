@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 6
+var APP_VERSIONE = 7
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -714,8 +714,44 @@ function avvisiPrezzo(p, fornitore) {
 // Data sconosciuta o futura nel documento: nel database c'è il segnaposto 01.01.2000.
 function dataIgnota(s) { return !!s && String(s).slice(0, 10) <= '2000-01-01' }
 function dataPrezzoTesto(p) {
-  if (dataIgnota(p.data_prezzo)) return p.data_nel_documento ? esc(p.data_nel_documento) : 'senza data'
+  if (!p.data_prezzo || dataIgnota(p.data_prezzo)) {
+    return p.data_nel_documento ? 'Data non certa (nel documento: ' + esc(p.data_nel_documento) + ')' : 'Data non nota'
+  }
   return RFC.fmtData(p.data_prezzo)
+}
+
+// «Da dove viene» un prezzo: mai vuoto, mai inventato.
+// x = riga di rf_v_storico + documento_testo, origine_riga, origine_prima, nota, verificato_iniziali (vedi disegnaArticolo).
+var NOMI_DOCUMENTO = {
+  offerta: ['🧾', 'Offerta'], listino: ['📒', 'Listino'], mail_variazione: ['✉️', 'Mail di variazione'],
+  scheda_richiesta: ['📝', 'Scheda richiesta'], altro: ['📎', 'Altro documento']
+}
+// origine_riga: MATERIALE:r19 e MATERIALE:r19:ugitop (foglio MATERIALE), OFFERTA:… (offerte, hanno il documento)
+function origineInChiaro(o) {
+  var m = /^MATERIALE:r(\d+)(:ugitop)?/.exec(o)
+  if (m) return 'Importato dal foglio MATERIALE, riga ' + m[1] + (m[2] ? ', colonna ugitop/mattpluss' : '')
+  return /^OFFERTA:/.test(o) ? 'Importato da un\'offerta' : 'Importato (' + o + ')'
+}
+function daDoveViene(x) {
+  var chi = x.creato_iniziali && x.creato_iniziali !== 'SQL' ? x.creato_iniziali : ''
+  if (x.documento_tipo && !x.documento_percorso && /^Prezzo inserito a mano/.test(x.documento_testo || '')) {
+    return '✍️ A mano' + (chi ? ' (' + esc(chi) + ')' : '') + (x.nota ? ': ' + esc(x.nota) : '')
+  }
+  if (x.documento_tipo) {
+    var d = NOMI_DOCUMENTO[x.documento_tipo] || ['📄', x.documento_tipo]
+    return d[0] + ' ' + esc(d[1]) + (x.documento_numero ? ' ' + esc(x.documento_numero) : '') +
+      (x.documento_nome_file ? '<br><span class="dim piccolo">' + esc(x.documento_nome_file) + '</span>' : '') +
+      '<br>' + (x.documento_percorso ? bottoneProva(x) : '<span class="dim piccolo">📄 File non archiviato</span>')
+  }
+  // Un prezzo importato senza documento e poi confermato con un'altra data è una riga nuova: l'origine sta sulla riga che ha sostituito.
+  var o = x.origine_riga || x.origine_prima
+  if (o) {
+    return '📋 ' + esc(origineInChiaro(o)) + (x.verificato_iniziali ? ', confermato da ' + esc(x.verificato_iniziali) : '') +
+      '<br><span class="dim piccolo">📄 Nessun documento</span>'
+  }
+  if (x.origine_letta === false) return '❌ Origine non letta: esci e rientra'
+  return chi ? '✍️ Inserito da ' + esc(chi) + '<br><span class="dim piccolo">📄 Nessun documento</span>'
+             : '📥 Import senza documento'
 }
 // «📄 Prova del prezzo»: apre il documento da cui viene il prezzo, con un link firmato a tempo.
 function bottoneProva(p) {
