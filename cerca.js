@@ -788,9 +788,11 @@ async function esportaListino() {
     RF.articoli.filter(function (a) { return !a.archiviato }).forEach(function (a) {
       var avv = [], prezzo = null, netto = null, forn = '', data = '', s = a.usato || {}, u = s.riga
       if (u) {
-        prezzo = RFC.arrotonda(Number(u.arrivato_chf), 2); netto = RFC.arrotonda(Number(u.netto_chf), 2)
+        // Un prezzo non confermato NON entra nella colonna D: le formule dell'Excel lo userebbero senza vedere l'avviso (Direttore, 5.11.2026). Resta MANCA, come prima.
+        if (!s.daVerificare) prezzo = RFC.arrotonda(Number(u.arrivato_chf), 2)
+        netto = RFC.arrotonda(Number(u.netto_chf), 2)
         forn = u.fornitore_nome || ''; data = dataIgnota(u.data_prezzo) ? 'Data non nota' : RFC.fmtData(u.data_prezzo)
-        if (s.daVerificare) avv.push('Prezzo da verificare: nessun prezzo confermato')
+        if (s.daVerificare) avv.push('Prezzo da verificare, non nel listino: ' + RFC.fmt(Number(u.arrivato_chf)) + ' CHF arrivato')
         else if (!u.preferito) avv.push('Nessun preferito: prezzo del più conveniente')
         if (u.scaduto) avv.push('Offerta scaduta')
         if (u.vecchio && !dataIgnota(u.data_prezzo)) avv.push('Prezzo vecchio')
@@ -812,7 +814,7 @@ async function esportaListino() {
       ['3. Nella cella del prezzo scrivi questa formula (poi trascinala in giù):'],
       ['=SE.ERRORE(INDICE(LISTINO_RADAR!D:D;CONFRONTA(A2;LISTINO_RADAR!A:A;0));"MANCA")'],
       [''],
-      ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo.'],
+      ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo confermato (vedi la colonna Avviso).'],
       ['Il prezzo è quello che prende l\'offerta: ARRIVATO, in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari, variazioni di oggi e costo di arrivo. Il netto è nell\'ultima colonna. Gli EUR sono convertiti col cambio delle Impostazioni.'],
       ['Esportato il ' + RFC.fmtData(RFC.oggiISO()) + ' · cambio EUR→CHF ' + RF.imp.cambio_eur_chf + ' del ' + RFC.fmtData(RF.imp.cambio_data)],
       ['Ogni volta che i prezzi cambiano, esporta di nuovo e sostituisci il foglio LISTINO_RADAR.']
