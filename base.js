@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = 7
+var APP_VERSIONE = '7.1'
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -74,6 +74,7 @@ function spiegaErrore(e) {
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'non riesco a raggiungere il server: controlla la connessione.'
   if (/row-level security|permission denied|insufficient_privilege/i.test(m)) return 'non hai il permesso per questa operazione.'
   if (/duplicate key/i.test(m)) return 'esiste già (valore doppio).'
+  if (/statement timeout/i.test(m)) return 'il database ci mette troppo a rispondere: riprova fra un minuto.'
   return m
 }
 function oraISO() { return new Date().toISOString() }
@@ -236,6 +237,7 @@ async function caricaArticoli(forza) {
     a.n_prezzi = righe.filter(function (p) { return !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori }).length
     a.n_da_verificare = righe.filter(function (p) { return p.da_verificare }).length
     a.n_righe_prezzo = righe.length
+    a.righe_prezzo = righe
     a.usato = prezzoUsato(righe)
     a._cerca = RFC.perRicerca([a.codice, a.descrizione, a.categoria, a.preferito_nome, a.usato.riga && a.usato.riga.fornitore_nome, a.note].join(' '))
   })

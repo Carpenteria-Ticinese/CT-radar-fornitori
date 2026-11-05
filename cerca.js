@@ -779,32 +779,56 @@ function finestraPrezzoManuale(art) {
 // ═════════════════════════════════════════════════════════════════════════════
 // ESPORTAZIONE PER IL MIO EXCEL
 // ═════════════════════════════════════════════════════════════════════════════
+// Colonne A–G: identiche alla v6. L'Excel di Umberto può leggerle ancora: non si toccano finché Preventivi non è online.
+// La v6 le prendeva da rf_v_articoli, che col login tocca il limite di 8 secondi del database, anche a pagine e a lotti (su CT-PROVA fallisce).
+// Qui lo stesso calcolo della vista (RF_16) sulle righe di rf_v_prezzi_attuali: pp = preferito, mi = il primo del confronto.
+function datiListinoV6(a) {
+  var conf = (a.righe_prezzo || []).filter(function (p) { return !p.fornitore_archiviato && !p.fornitore_fuori && !p.da_verificare })
+  function piuNuovo(x, y) { return x.data_prezzo < y.data_prezzo ? 1 : x.data_prezzo > y.data_prezzo ? -1 : 0 }
+  var mi = conf.slice().sort(function (x, y) {
+    if (x.arrivato_chf == null || y.arrivato_chf == null) return (x.arrivato_chf == null) - (y.arrivato_chf == null) || piuNuovo(x, y)
+    return Number(x.arrivato_chf) - Number(y.arrivato_chf) || piuNuovo(x, y)
+  })[0]
+  var pp = conf.filter(function (p) { return p.preferito }).sort(function (x, y) { return (x.variante - y.variante) || piuNuovo(x, y) })[0]
+  return {
+    n_prezzi: conf.length, preferito_chf: pp ? pp.netto_chf : null, preferito_nome: pp ? pp.fornitore_nome : null, preferito_data: pp ? pp.data_prezzo : null,
+    preferito_scaduto: pp ? pp.scaduto : null, preferito_vecchio: pp ? pp.vecchio : null, preferito_sconto_noto: pp ? pp.sconto_noto : null,
+    preferito_solo_pacchi: pp ? pp.solo_pacchi_interi : null, migliore_chf: mi ? mi.netto_chf : null, migliore_nome: mi ? mi.fornitore_nome : null
+  }
+}
+
 async function esportaListino() {
+  var tasto = el('c-esporta'), scritta = tasto ? tasto.textContent : ''
+  if (tasto && tasto.disabled) return
+  if (tasto) { tasto.disabled = true; tasto.textContent = '⏳ Preparo il listino…' }
+  avvisa('info', '⏳ Preparo il listino…')
   try {
     await caricaLibreria('xlsx')
-    if (!(await caricaArticoli(true))) return
-    // La colonna D resta il prezzo (le formule del foglio la leggono): è il prezzo usato, lo stesso dell'offerta. Il netto va in fondo.
-    var righe = [['Codice', 'Descrizione', 'Unità', 'Prezzo usato CHF (arrivato)', 'Fornitore', 'Data prezzo', 'Avviso', 'Netto CHF']]
+    if (!(await caricaArticoli(true))) { avvisa('', ''); return }
+    var righe = [['Codice', 'Descrizione', 'Unità', 'Prezzo preferito CHF', 'Fornitore preferito', 'Data prezzo', 'Avviso', 'Prezzo arrivato CHF', 'Confermato sì/no']]
     RF.articoli.filter(function (a) { return !a.archiviato }).forEach(function (a) {
-      var avv = [], prezzo = null, netto = null, forn = '', data = '', s = a.usato || {}, u = s.riga
-      if (u) {
-        // Un prezzo non confermato NON entra nella colonna D: le formule dell'Excel lo userebbero senza vedere l'avviso (Direttore, 5.11.2026). Resta MANCA, come prima.
-        if (!s.daVerificare) prezzo = RFC.arrotonda(Number(u.arrivato_chf), 2)
-        netto = RFC.arrotonda(Number(u.netto_chf), 2)
-        forn = u.fornitore_nome || ''; data = dataIgnota(u.data_prezzo) ? 'Data non nota' : RFC.fmtData(u.data_prezzo)
-        if (s.daVerificare) avv.push('Prezzo da verificare, non nel listino: ' + RFC.fmt(Number(u.arrivato_chf)) + ' CHF arrivato')
-        else if (!u.preferito) avv.push('Nessun preferito: prezzo del più conveniente')
-        if (u.scaduto) avv.push('Offerta scaduta')
-        if (u.vecchio && !dataIgnota(u.data_prezzo)) avv.push('Prezzo vecchio')
-        if (u.sconto_noto === false) avv.push('Sconto non noto')
-        if (u.solo_pacchi_interi) avv.push('Solo pacchi interi')
-      } else avv.push(a.n_righe_prezzo ? s.motivo : 'Nessun prezzo')
+      var avv = [], prezzo = null, forn = '', data = '', v6 = datiListinoV6(a)
+      if (v6.preferito_chf != null) {
+        prezzo = RFC.arrotonda(Number(v6.preferito_chf), 2); forn = v6.preferito_nome || ''; data = RFC.fmtData(v6.preferito_data)
+      } else if (v6.migliore_chf != null) {
+        prezzo = RFC.arrotonda(Number(v6.migliore_chf), 2); forn = v6.migliore_nome || ''
+        avv.push('Nessun preferito: prezzo del più conveniente')
+      } else if (v6.n_prezzi) {
+        avv.push('Prezzo non confrontabile (unità senza fattore)')
+      } else avv.push('Nessun prezzo')
+      if (v6.preferito_scaduto) avv.push('Offerta scaduta')
+      if (v6.preferito_vecchio) avv.push('Prezzo vecchio')
+      if (v6.preferito_sconto_noto === false) avv.push('Sconto non noto')
+      if (v6.preferito_solo_pacchi) avv.push('Solo pacchi interi')
       if (a.da_verificare) avv.push('Da verificare: ' + a.da_verificare)
-      righe.push([a.codice, a.descrizione, a.unita, prezzo == null ? 'MANCA' : prezzo, forn, data, avv.join(' · '), netto == null ? '' : netto])
+      // H e I: il prezzo della regola nuova, quello che prende l'offerta. Vuote se non c'è prezzo.
+      var s = a.usato, u = s && s.riga
+      righe.push([a.codice, a.descrizione, a.unita, prezzo == null ? 'MANCA' : prezzo, forn, data, avv.join(' · '),
+                  u ? RFC.arrotonda(Number(u.arrivato_chf), 2) : null, u ? (s.daVerificare ? 'No' : 'Sì') : null])
     })
     var wb = XLSX.utils.book_new()
     var ws = XLSX.utils.aoa_to_sheet(righe)
-    ws['!cols'] = [{ wch: 34 }, { wch: 48 }, { wch: 8 }, { wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 50 }, { wch: 12 }]
+    ws['!cols'] = [{ wch: 34 }, { wch: 48 }, { wch: 8 }, { wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 50 }, { wch: 20 }, { wch: 18 }]
     XLSX.utils.book_append_sheet(wb, ws, 'LISTINO_RADAR')
     var come = XLSX.utils.aoa_to_sheet([
       ['Come usarlo'],
@@ -814,16 +838,19 @@ async function esportaListino() {
       ['3. Nella cella del prezzo scrivi questa formula (poi trascinala in giù):'],
       ['=SE.ERRORE(INDICE(LISTINO_RADAR!D:D;CONFRONTA(A2;LISTINO_RADAR!A:A;0));"MANCA")'],
       [''],
-      ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo confermato (vedi la colonna Avviso).'],
-      ['Il prezzo è quello che prende l\'offerta: ARRIVATO, in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari, variazioni di oggi e costo di arrivo. Il netto è nell\'ultima colonna. Gli EUR sono convertiti col cambio delle Impostazioni.'],
+      ['«MANCA» = il codice non c\'è nell\'elenco prezzi, oppure non ha ancora un prezzo.'],
+      ['Il prezzo è in CHF per l\'unità dell\'articolo (colonna C), con sconti, rincari e variazioni di oggi. Gli EUR sono convertiti col cambio delle Impostazioni.'],
       ['Esportato il ' + RFC.fmtData(RFC.oggiISO()) + ' · cambio EUR→CHF ' + RF.imp.cambio_eur_chf + ' del ' + RFC.fmtData(RF.imp.cambio_data)],
       ['Ogni volta che i prezzi cambiano, esporta di nuovo e sostituisci il foglio LISTINO_RADAR.']
     ])
     come['!cols'] = [{ wch: 120 }]
     XLSX.utils.book_append_sheet(wb, come, 'Come usarlo')
     XLSX.writeFile(wb, 'CT_Listino_Radar_' + RFC.oggiISO() + '.xlsx')
+    avvisa('', '')
     toast('⬇️ Listino esportato: ' + (righe.length - 1) + ' articoli')
   } catch (e) {
     avvisa('err', esc('Esportazione non riuscita: ' + spiegaErrore(e)))
+  } finally {
+    if (tasto) { tasto.disabled = false; tasto.textContent = scritta }
   }
 }
