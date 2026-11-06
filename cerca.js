@@ -320,11 +320,11 @@ function rigaPrezzoUsato(s, art, storico, nRighe) {
   return '<div class="prezzo-usato" id="a-prezzo-usato">' +
     '<div class="prezzo-usato-cifra">💰 Prezzo usato: <strong>' + RFC.fmt(r.arrivato_chf) + ' CHF</strong> / ' + esc(art.unita) +
       ' arrivato <span class="prezzo-usato-netto">(netto ' + RFC.fmt(r.netto_chf) + ')</span></div>' +
+    (s.daVerificare ? banner('warn', '<strong>' + esc(avvisoUsato(r)) + '.</strong> Non c\'è nessun prezzo confermato: si usa questo, anche nelle offerte. ' +
+      (r.fornitore_fuori ? 'Crea il fornitore in Anagrafiche, oppure premi «✅ Scegli il fornitore».' : 'Controllalo e premi «✅ Conferma».')) : '') +
     '<div>Fornitore: <strong>' + esc(r.fornitore_nome) + '</strong> ' + perche + '</div>' +
     '<div>' + (dataIgnota(r.data_prezzo) ? '' : 'Data: ') + dataPrezzoTesto(r) + '</div>' +
     '<div class="origine">Da dove viene: ' + daDoveViene(origine) + '</div>' +
-    (s.daVerificare ? banner('warn', '<strong>' + esc(avvisoUsato(r)) + '.</strong> Non c\'è nessun prezzo confermato: si usa questo, anche nelle offerte. ' +
-      (r.fornitore_fuori ? 'Crea il fornitore in Anagrafiche, oppure premi «✅ Scegli il fornitore».' : 'Controllalo e premi «✅ Conferma».')) : '') +
     '</div>'
 }
 
