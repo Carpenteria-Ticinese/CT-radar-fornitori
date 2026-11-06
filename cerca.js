@@ -145,12 +145,12 @@ async function disegnaArticolo(id) {
   v.innerHTML = '<div class="caricamento">⏳ Carico…</div>'
   if (!(await sessioneValida())) return
   var r = await Promise.all([
-    sb.from('rf_v_confronto').select('*').eq('articolo_id', id).order('posizione'),
-    sb.from('rf_foto_articolo').select('*').eq('articolo_id', id).eq('archiviata', false).order('principale', { ascending: false }).order('creato_il'),
-    sb.from('rf_articoli').select('*').eq('id', id).single(),
-    sb.from('rf_v_prezzi_attuali').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }),
-    sb.from('rf_v_storico').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }).order('creato_il', { ascending: false }),
-    sb.from('rf_prezzi').select('id,origine_riga,nota,sostituito_da,verificato_iniziali').eq('articolo_id', id)
+    conRiprova(function () { return sb.from('rf_v_confronto').select('*').eq('articolo_id', id).order('posizione') }),
+    conRiprova(function () { return sb.from('rf_foto_articolo').select('*').eq('articolo_id', id).eq('archiviata', false).order('principale', { ascending: false }).order('creato_il') }),
+    conRiprova(function () { return sb.from('rf_articoli').select('*').eq('id', id).single() }),
+    conRiprova(function () { return sb.from('rf_v_prezzi_attuali').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }) }),
+    conRiprova(function () { return sb.from('rf_v_storico').select('*').eq('articolo_id', id).order('data_prezzo', { ascending: false }).order('creato_il', { ascending: false }) }),
+    conRiprova(function () { return sb.from('rf_prezzi').select('id,origine_riga,nota,sostituito_da,verificato_iniziali').eq('articolo_id', id) })
   ])
   r.slice(0, 3).forEach(function (x) { if (x.error) throw x.error })
   var prezzi = r[0].data || [], foto = r[1].data || [], art = r[2].data

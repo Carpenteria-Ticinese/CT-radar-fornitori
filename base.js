@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.1'
+var APP_VERSIONE = '7.2'
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -185,10 +185,18 @@ async function caricaBase(forza) {
 }
 
 // Legge a pagine: il server dà al massimo 1000 righe per volta.
+// Una lettura che si ferma per il limite di tempo del database (8 s) o per un errore del server si riprova UNA volta.
+// Se fallisce ancora resta l'errore: chi legge lo mostra a schermo, mai un elenco vuoto. domanda() crea ogni volta una richiesta nuova.
+async function conRiprova(domanda) {
+  var r = await domanda()
+  if (r && r.error && (r.status >= 500 || /statement timeout|Failed to fetch|NetworkError/i.test(String(r.error.message)))) r = await domanda()
+  return r
+}
+
 async function leggiAPagine(domanda) {
   var tutti = [], da = 0, PAGINA = 1000
   for (;;) {
-    var r = await domanda().range(da, da + PAGINA - 1)
+    var r = await conRiprova(function () { return domanda().range(da, da + PAGINA - 1) })
     if (r.error) throw r.error
     tutti = tutti.concat(r.data || [])
     if (!r.data || r.data.length < PAGINA) return tutti
@@ -211,7 +219,7 @@ async function caricaArticoli(forza) {
     leggiAPagine(function () { return sb.from('rf_v_prezzi_attuali').select(COLONNE_PREZZO_USATO).order('id') }),
     leggiAPagine(function () { return sb.from('rf_foto_articolo').select('articolo_id,percorso').eq('archiviata', false).order('principale', { ascending: false }).order('creato_il').order('id') }),
     leggiAPagine(function () { return sb.from('rf_preferiti').select('articolo_id,fornitore_id').order('articolo_id') }),
-    sb.from('rf_prezzi').select('id', { count: 'exact', head: true }).eq('stato', 'attivo')
+    conRiprova(function () { return sb.from('rf_prezzi').select('id', { count: 'exact', head: true }).eq('stato', 'attivo') })
   ])
   var tutti = letture[0], perArticolo = {}, foto = {}, preferiti = {}
   // Con le RLS un accesso negato dà zero righe senza errore: zero articoli non può essere vero.
