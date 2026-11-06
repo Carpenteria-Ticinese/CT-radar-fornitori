@@ -7,11 +7,12 @@
  *     variante, articolo_archiviato, fornitore_archiviato, fornitore_fuori, id }
  *
  * Regola:
- *   1. Righe utili: niente varianti, niente articoli o fornitori archiviati, NIENTE fornitori «fuori» (da valutare: non valgono mai, né con
- *      prezzo confermato né da verificare — S9, ottavo giro), con il prezzo arrivato (fattore dell'unità presente).
+ *   1. Righe utili: niente varianti, niente articoli archiviati, niente fornitori archiviati (= esclusi a mano da Umberto: non valgono mai),
+ *      con il prezzo arrivato (fattore dell'unità presente). Umberto, 6.11.2026: «fuori» e «da valutare» non sono la stessa cosa.
  *   2. Un prezzo 0 o negativo NON VALE MAI: è un errore di Materiali, si scarta sempre (non vince come «più conveniente»).
- *   3. Si usano SOLO i prezzi confermati (non «da verificare»). Se non ce n'è nessuno, valgono quelli «da verificare» e il risultato
- *      porta daVerificare = true: l'offerta mostra un avviso sulla voce, a schermo; niente sul PDF del cliente.
+ *   3. Si usano SOLO i prezzi confermati di un fornitore vero. Se non ce n'è nessuno, valgono quelli «da verificare» e quelli di una ditta
+ *      «da valutare» (colonna fornitore_fuori della vista: da_valutare o unita_in): il risultato porta daVerificare = true,
+ *      l'offerta mostra un avviso sulla voce, a schermo; niente sul PDF del cliente.
  *   4. Per ogni fornitore conta SOLO il suo prezzo più recente (data ignota = il più vecchio; a parità di data il più basso):
  *      un prezzo vecchio di un fornitore che ne ha uno più nuovo non conta più.
  *   5. Dentro il gruppo: il PREFERITO, se c'è, col suo prezzo più recente. Senza preferito: il più basso fra i prezzi più recenti
@@ -46,16 +47,15 @@
   function scegli(righe) {
     const tutte = righe || [];
     if (!tutte.length) return { riga: null, daVerificare: false, motivo: 'articolo non trovato in Materiali' };
-    const utili = tutte.filter(r => !r.variante && !r.articolo_archiviato && !r.fornitore_archiviato && !r.fornitore_fuori);
-    if (!utili.length) return { riga: null, daVerificare: false, motivo: tutte.some(r => r.fornitore_fuori && !r.variante && !r.articolo_archiviato && !r.fornitore_archiviato) ? 'in Materiali solo fornitori da valutare (fuori)' : 'in Materiali solo varianti o fornitori archiviati' };
+    const utili = tutte.filter(r => !r.variante && !r.articolo_archiviato && !r.fornitore_archiviato);
+    if (!utili.length) return { riga: null, daVerificare: false, motivo: 'in Materiali solo varianti o fornitori archiviati' };
     const conPrezzo = utili.filter(haPrezzo);
     if (!conPrezzo.length) return { riga: null, daVerificare: false, motivo: 'in Materiali manca la conversione dell\'unità (fattore)' };
     const validi = conPrezzo.filter(positivo);
     if (!validi.length) return { riga: null, daVerificare: false, motivo: 'in Materiali solo prezzi a 0 o negativi: errore da correggere' };
-    const confermati = validi.filter(r => !r.da_verificare);
+    const confermati = validi.filter(r => !r.da_verificare && !r.fornitore_fuori);
     if (confermati.length) return { riga: migliore(confermati), daVerificare: false, motivo: null };
-    const daVer = validi.filter(r => r.da_verificare);
-    return { riga: migliore(daVer), daVerificare: true, motivo: null };
+    return { riga: migliore(validi), daVerificare: true, motivo: null };
   }
 
   const API = { scegli, recentiPerFornitore, DATA_IGNOTA };

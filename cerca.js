@@ -52,9 +52,7 @@ function avvisiArticolo(a) {
   var nv = Number(a.n_da_verificare) || 0
   if (nv) t.push(tag('warn', '⚠️', nv === 1 ? 'Prezzo da verificare' : nv + ' prezzi da verificare'))
   if (!a.n_foto && a.tipo === 'Materiale') t.push(tag('', '📷', 'Foto da aggiungere'))   // servizi e subappalti: niente foto
-  var nf = Number(a.n_fuori) || 0
-  if (nf) t.push(tag('warn', '🚫', nf === 1 ? 'Prezzo di un fornitore da valutare' : nf + ' prezzi di fornitori da valutare'))
-  if (!a.n_prezzi) { if (!nv && !nf) t.push(tag('', '∅', 'Nessun prezzo')) }
+  if (!a.n_prezzi) { if (!nv) t.push(tag('', '∅', 'Nessun prezzo')) }
   else if (!a.preferito_fornitore_id) t.push(tag('warn', '⭐', 'Nessun preferito'))
   // Gli avvisi parlano del prezzo usato, non di un altro.
   var u = a.usato && a.usato.riga
@@ -76,8 +74,7 @@ function conteggiFiltri() {
     attivi: attivi.length,
     daVerificare: attivi.filter(eDaVerificare).length,
     archiviati: RF.articoli.length - attivi.length,
-    senzaUsato: attivi.filter(function (a) { return a.n_righe_prezzo && !a.usato.riga }).length,
-    soloFuori: attivi.filter(function (a) { return a.n_righe_prezzo && !a.usato.riga && /da valutare/.test(a.usato.motivo || '') }).length
+    senzaUsato: attivi.filter(function (a) { return a.n_righe_prezzo && !a.usato.riga }).length
   }
 }
 
@@ -93,9 +90,11 @@ function filtraArticoli() {
 // Senza prezzo usato: mai vuoto, mai una cifra. La stessa scritta in Cerca e in cima alla scheda.
 function scrittaNessunUsato(s, nRighe) {
   if (!nRighe) return '∅ Nessun prezzo'
-  var m = String(s.motivo || '').replace(/^in Materiali /, '')
-  return '🚫 Nessun prezzo usato: ' + (/da valutare/.test(m) ? 'fornitore da valutare' : m)
+  return '🚫 Nessun prezzo usato: ' + String(s.motivo || '').replace(/^in Materiali /, '')
 }
+
+// L'avviso sul prezzo usato non confermato: la stessa scritta in Cerca e in cima alla scheda.
+function avvisoUsato(r) { return 'Prezzo da verificare' + (r.fornitore_fuori ? ': fornitore da valutare' : '') }
 
 // Elenco di Cerca: la stessa cifra della scheda e dell'offerta (prezzo arrivato, netto accanto).
 function prezzoElenco(a) {
@@ -104,7 +103,7 @@ function prezzoElenco(a) {
   return '<strong>' + RFC.fmt(r.arrivato_chf) + ' CHF</strong><span class="dim">/ ' + esc(a.unita) + '</span><br>' +
     '<span class="piccolo">arrivato · netto ' + RFC.fmt(r.netto_chf) + '</span><br>' +
     '<span class="piccolo">' + (r.preferito ? '⭐ ' : '') + esc(r.fornitore_nome || '') + ' · ' + dataPrezzoTesto(r) + '</span>' +
-    (u.daVerificare ? '<br><span class="piccolo">⚠️ da verificare</span>' : '')
+    (u.daVerificare ? '<br><span class="piccolo">⚠️ ' + esc(avvisoUsato(r)) + '</span>' : '')
 }
 
 async function elencoCerca() {
@@ -117,7 +116,7 @@ async function elencoCerca() {
   else if (CERCA.archiviati) spiega = ' · compresi ' + cf.archiviati + ' archiviati'
   if (CERCA.soloVerificare && cf.daVerificare === cf.attivi) spiega += ' · Tutti gli articoli sono da verificare: l\'elenco non cambia.'
   else if (CERCA.soloVerificare) spiega += ' · ' + cf.daVerificare + ' da verificare su ' + cf.attivi + ': apri un articolo per vedere il perché.'
-  if (cf.senzaUsato) spiega += ' · ' + cf.senzaUsato + ' senza prezzo usato' + (cf.soloFuori ? ' (' + cf.soloFuori + ' con il fornitore da valutare)' : '')
+  if (cf.senzaUsato) spiega += ' · ' + cf.senzaUsato + ' senza prezzo usato'
   html('c-conteggio', trovati.length + (trovati.length === 1 ? ' articolo' : ' articoli') + esc(spiega))
   var mostrati = trovati.slice(0, CERCA.quanti)
   html('c-risultati', mostrati.map(function (a) {
@@ -166,12 +165,11 @@ async function disegnaArticolo(id) {
   ])
   r.slice(0, 3).forEach(function (x) { if (x.error) throw x.error })
   var prezzi = r[0].data || [], foto = r[1].data || [], art = r[2].data
-  // Tutti i prezzi attivi di tutti i fornitori: confermati (= il confronto), da verificare, fornitore da valutare (non vale mai), fornitore archiviato.
+  // Tutti i prezzi attivi di tutti i fornitori: confermati (= il confronto), da verificare (anche di un fornitore da valutare), fornitore archiviato.
   var tutti = r[3].data || []
   var nelConfronto = {}
   prezzi.forEach(function (p) { nelConfronto[p.id] = true })
-  var fuori = tutti.filter(function (p) { return p.fornitore_fuori })
-  var daVerificare = tutti.filter(function (p) { return p.da_verificare && !p.fornitore_fuori })
+  var daVerificare = tutti.filter(function (p) { return p.da_verificare || p.fornitore_fuori })
   var altri = tutti.filter(function (p) { return !p.da_verificare && !p.fornitore_fuori && !nelConfronto[p.id] })
   var storico = arricchisciStorico(r[4].data || [], r[5])
   await aggiungiTestoDocumenti(storico)
@@ -220,13 +218,9 @@ async function disegnaArticolo(id) {
           : '<p class="aiuto">Nessun prezzo confermato.</p>') +
         (daVerificare.length ? '<div id="a-daverificare">' +
           '<h3 class="gruppo-prezzi">⚠️ Da verificare (' + daVerificare.length + ')</h3>' +
-          '<p class="aiuto">Non sono confermati. Si usano solo se non c\'è nessun prezzo confermato, e allora si vede un avviso. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.</p>' +
+          '<p class="aiuto">Non sono confermati. Si usano solo se non c\'è nessun prezzo confermato, e allora si vede un avviso. Controlla e premi «✅ Conferma», oppure carica un prezzo nuovo.' +
+            (daVerificare.some(function (p) { return p.fornitore_fuori }) ? ' Fornitore da valutare: crea il contatto in Anagrafiche e premi «✅ Diventa fornitore» nella scheda della ditta (🏭 Fornitori). «✅ Scegli il fornitore» sposta invece il prezzo su un fornitore che esiste già.' : '') + '</p>' +
           tabellaDaVerificare(daVerificare, art, false, idUsato) +
-        '</div>' : '') +
-        (fuori.length ? '<div id="a-fuori">' +
-          '<h3 class="gruppo-prezzi">🚫 Fornitore da valutare: non vale per l\'offerta (' + fuori.length + ')</h3>' +
-          '<p class="aiuto">Questi prezzi non si usano mai, finché il fornitore non è vero. Per farli valere: crea il contatto in Anagrafiche e premi «✅ Diventa fornitore» nella scheda della ditta (🏭 Fornitori). «✅ Scegli il fornitore» sposta invece il prezzo su un fornitore che esiste già.</p>' +
-          tabellaDaVerificare(fuori, art, 'fuori', idUsato) +
         '</div>' : '') +
         (altri.length ? '<div id="a-altri">' +
           '<h3 class="gruppo-prezzi">📦 Fornitore archiviato (' + altri.length + ')</h3>' +
@@ -319,9 +313,7 @@ function rigaPrezzoUsato(s, art, storico, nRighe) {
   var r = s.riga
   if (!r) {
     return '<div class="prezzo-usato" id="a-prezzo-usato"><strong>' + esc(scrittaNessunUsato(s, nRighe)) + '</strong>' +
-      '<div>' + esc(!nRighe ? 'Per questo articolo non c\'è nessun prezzo.'
-        : /da valutare/.test(s.motivo || '') ? 'I prezzi di questo articolo sono di fornitori da valutare: non valgono per l\'offerta, che segnerà il prezzo come mancante. Sono qui sotto.'
-        : 'L\'offerta segnerà il prezzo come mancante.') + '</div></div>'
+      '<div>' + esc(!nRighe ? 'Per questo articolo non c\'è nessun prezzo.' : 'L\'offerta segnerà il prezzo come mancante.') + '</div></div>'
   }
   var origine = storico.filter(function (x) { return x.id === r.id })[0] || { origine_letta: false }
   var perche = r.preferito ? tag('ok', '⭐', 'Preferito') : s.daVerificare ? '' : tag('info', '📉', 'Il più conveniente')
@@ -331,7 +323,8 @@ function rigaPrezzoUsato(s, art, storico, nRighe) {
     '<div>Fornitore: <strong>' + esc(r.fornitore_nome) + '</strong> ' + perche + '</div>' +
     '<div>' + (dataIgnota(r.data_prezzo) ? '' : 'Data: ') + dataPrezzoTesto(r) + '</div>' +
     '<div class="origine">Da dove viene: ' + daDoveViene(origine) + '</div>' +
-    (s.daVerificare ? banner('warn', '<strong>Prezzo da verificare.</strong> Non c\'è nessun prezzo confermato: si usa questo, anche nelle offerte. Controllalo e premi «✅ Conferma».') : '') +
+    (s.daVerificare ? banner('warn', '<strong>' + esc(avvisoUsato(r)) + '.</strong> Non c\'è nessun prezzo confermato: si usa questo, anche nelle offerte. ' +
+      (r.fornitore_fuori ? 'Crea il fornitore in Anagrafiche, oppure premi «✅ Scegli il fornitore».' : 'Controllalo e premi «✅ Conferma».')) : '') +
     '</div>'
 }
 
@@ -396,15 +389,14 @@ function tabellaStorico(righe, art, idUsato) {
 }
 
 // Prezzi «da verificare» di un articolo: si vedono, ma non stanno nel confronto.
-// soloLettura: true = prezzi già confermati di un fornitore archiviato: niente da confermare.
-// 'fuori' = fornitore da valutare: «Scegli il fornitore» solo se il prezzo è ancora da verificare (rf_conferma_prezzo rifiuta gli altri).
+// soloLettura: prezzi già confermati di un fornitore archiviato: niente da confermare.
+// Fornitore da valutare: «Scegli il fornitore» solo se il prezzo è ancora da verificare (rf_conferma_prezzo rifiuta gli altri).
 function tabellaDaVerificare(prezzi, art, soloLettura, idUsato) {
   return '<div class="tabella-wrap"><table class="tab a-schede"><thead><tr>' +
     '<th>Fornitore</th><th>Voce</th><th class="num">Listino e sconti</th><th class="num">Netto</th><th class="num">CHF / ' + esc(art.unita) + '</th>' +
     '<th>Data</th><th>Perché</th><th></th></tr></thead><tbody>' +
     prezzi.map(function (p) {
       var s1 = Number(p.sconto1_usato) || 0
-      var gruppoFuori = soloLettura === 'fuori'
       return '<tr>' +
         '<td data-et="Fornitore"><strong>' + esc(p.fornitore_nome) + '</strong>' +
           (p.fornitore_archiviato && !soloLettura ? '<br>' + tag('', '📦', 'Fornitore archiviato: non si usa') : '') +
@@ -415,13 +407,11 @@ function tabellaDaVerificare(prezzi, art, soloLettura, idUsato) {
         '<td data-et="Netto" class="num">' + prezzoTesto(p.netto_oggi, p.valuta) + '</td>' +
         '<td data-et="CHF per unità" class="num"><strong>' + (p.netto_chf != null ? RFC.fmt(p.netto_chf) : '–') + '</strong></td>' +
         '<td data-et="Data">' + dataPrezzoTesto(p) + '</td>' +
-        '<td data-et="Perché"><div class="tags">' + (gruppoFuori ? tag('warn', '🚫', 'Fornitore da valutare')
-            : soloLettura ? tag('', '📦', 'Fornitore archiviato')
-            : tag('warn', '⚠️', 'Da verificare')) + '</div>' +
+        '<td data-et="Perché"><div class="tags">' + (soloLettura ? tag('', '📦', 'Fornitore archiviato')
+            : tag('warn', '⚠️', 'Da verificare') + (p.fornitore_fuori ? tag('warn', '🔎', 'Fornitore da valutare') : '')) + '</div>' +
           (p.da_verificare_motivo ? '<span class="piccolo">' + esc(p.da_verificare_motivo) + '</span>' : '') + '</td>' +
         '<td data-et="Azioni" class="non-stampare"><div class="gruppo-btn">' +
-          (gruppoFuori ? (p.da_verificare ? '<button type="button" class="btn btn-piccolo" data-conferma="' + esc(p.id) + '">✅ Scegli il fornitore</button>' : '')
-            : soloLettura ? '' : '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">✅ Conferma</button>') +
+          (soloLettura || !p.da_verificare ? '' : '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">' + (p.fornitore_fuori ? '✅ Scegli il fornitore' : '✅ Conferma') + '</button>') +
           bottoneProva(p) + '</div></td></tr>'
     }).join('') + '</tbody></table></div>'
 }
@@ -440,7 +430,7 @@ function finestraConfermaPrezzo(p, art) {
       '<p><strong>' + esc(p.descrizione_fornitore || art.descrizione) + '</strong><br>' +
         'Netto: <strong>' + prezzoTesto(p.netto_oggi, p.valuta) + '</strong></p>' +
       (p.data_nel_documento ? '<p class="aiuto">Nel documento: ' + esc(p.data_nel_documento) + '.</p>' : '') +
-      (p.fornitore_fuori ? banner('warn', '<strong>' + esc(p.fornitore_nome) + ' è un fornitore da valutare: questo prezzo non vale per l\'offerta.</strong> Se scegli un fornitore vero, il prezzo passa a lui e diventa confermato.') : '') +
+      (p.fornitore_fuori ? banner('warn', '<strong>' + esc(p.fornitore_nome) + ' è un fornitore da valutare: questo prezzo vale con l\'avviso.</strong> Se scegli un fornitore vero, il prezzo passa a lui e diventa confermato.') : '') +
       '<label for="cf-forn">Fornitore</label><select id="cf-forn">' + opzioniFornitori(contattoAttuale, true) + '</select>' +
       '<p class="aiuto">Se manca, si crea in Anagrafiche.</p>' +
       '<label for="cf-data">Data del prezzo</label>' +
