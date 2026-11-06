@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.2'
+var APP_VERSIONE = '7.3'
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -243,7 +243,9 @@ async function caricaArticoli(forza) {
     a.preferito_nome = pref.length ? pref[0].fornitore_nome : null
     a.preferito_senza_fattore = pref.length > 0 && pref.every(function (p) { return p.senza_fattore })
     a.n_prezzi = righe.filter(function (p) { return !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori }).length
-    a.n_da_verificare = righe.filter(function (p) { return p.da_verificare }).length
+    // Fornitore «fuori» (da valutare): non vale mai, quindi i suoi prezzi non sono «da verificare»: stanno a parte.
+    a.n_da_verificare = righe.filter(function (p) { return p.da_verificare && !p.fornitore_fuori }).length
+    a.n_fuori = righe.filter(function (p) { return p.fornitore_fuori }).length
     a.n_righe_prezzo = righe.length
     a.righe_prezzo = righe
     a.usato = prezzoUsato(righe)
