@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.5'
+var APP_VERSIONE = '7.6'   // uguale a versione.json, data-versione e ogni ?v= in index.html
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -518,6 +518,7 @@ function installaCronologia() {
     vaiDaIndirizzo()
   })
   window.addEventListener('beforeunload', function (ev) {
+    if (AGG.esce) return                         // v7.6: ha già scelto «Aggiorna lo stesso», niente seconda domanda
     if (datiNonSalvati()) { ev.preventDefault(); ev.returnValue = '' }
   })
   ;['vista-impostazioni', 'vista-fornitore'].forEach(function (id) {
@@ -568,7 +569,9 @@ function apriFinestra(o) {
     b.addEventListener('click', function () { p.azione(fin, b) })
     return b
   }
-  function tasti(ev) { if (ev.key === 'Escape') fin.chiudi() }
+  // v7.6: Esc chiude solo la finestra in cima (prima chiudeva tutte: un avviso sopra un modulo
+  // si portava via anche il modulo con i dati scritti).
+  function tasti(ev) { if (ev.key === 'Escape' && FIN[FIN.length - 1] === fin) fin.chiudi() }
   document.addEventListener('keydown', tasti)
   sfondo.querySelector('[data-chiudi]').addEventListener('click', fin.chiudi)
   el('finestre').appendChild(sfondo)
@@ -592,6 +595,68 @@ function conferma(titolo, testo, testoSi, pericolo) {
     })
   })
 }
+
+// ─── Nuova versione (v7.6) ───────────────────────────────────────────────────
+// Regola di Umberto (9.11.2026): mai versioni vecchie bloccate. aggiorna.js (uguale in tutte le app,
+// NON si modifica) legge versione.json e mostra in alto «🔄 Nuova versione: aggiorna». Qui solo le
+// due cose di Materiali:
+// 1. «Aggiorna» con dati non salvati prima avvisa «Hai dati non salvati: salvali prima.»
+//    (tasti «✍️ Resta qui» = Invio, e «🔄 Aggiorna lo stesso»). Avviso, non blocco.
+//    Dati non salvati = quelli di datiNonSalvati() (import iniziato, richiesta d'offerta, impostazioni,
+//    scheda fornitore) + una finestra-modulo aperta: campi da riempire e un tasto per salvare
+//    (conferma prezzo, prezzo a mano, modifica/nuovo articolo, preferito, variazione…).
+//    Le finestre solo da guardare (grafico, prezzi di un documento) non contano.
+// 2. L'altezza della fascia va in --ct-agg-h: testata, menu e finestre scendono sotto la fascia (style.css).
+var AGG = { lasciaPassare: false, esce: false, fin: null }
+function datiNonSalvatiAgg() {
+  if (el('pagina-app').hidden) return ''           // login o accesso negato: niente da perdere
+  var perso = datiNonSalvati()
+  if (perso) return perso
+  for (var i = 0; i < FIN.length; i++) {
+    var f = FIN[i]
+    if (f === AGG.fin) continue
+    if (f.el.querySelector('.contenuto input, .contenuto select, .contenuto textarea') &&
+        f.el.querySelector('footer .btn-primario'))
+      return 'C\'è una finestra aperta («' + (f.el.querySelector('header h2').textContent || '') + '») con dati non ancora salvati.'
+  }
+  return ''
+}
+function avvisoAggiorna(tasto, perso) {
+  if (AGG.fin && FIN.indexOf(AGG.fin) >= 0) return   // l'avviso è già aperto
+  AGG.fin = apriFinestra({
+    titolo: '🔄 Nuova versione',
+    html: '<p class="agg-avviso"><strong>Hai dati non salvati: salvali prima.</strong></p>' +
+          '<p>' + esc(perso) + '</p>' +
+          '<p>Se aggiorni adesso, quello che non hai salvato si perde.</p>',
+    allaChiusura: function () { AGG.fin = null },   // ✕, Esc = resta qui
+    pulsanti: [
+      { testo: '🔄 Aggiorna lo stesso', classe: 'btn-pericolo', sinistra: true, id: 'agg-lo-stesso', azione: function (f, b) {
+        f.el.querySelectorAll('footer .btn, header .btn').forEach(function (x) { x.disabled = true })
+        b.textContent = '🔄 Aggiorno…'
+        AGG.lasciaPassare = true
+        AGG.esce = true                              // niente seconda domanda del browser (beforeunload)
+        tasto.click()                                // lo stesso tasto di aggiorna.js: questa volta passa
+      } },
+      { testo: '✍️ Resta qui', classe: 'btn-primario', id: 'agg-resta', azione: function (f) { f.chiudi() } }
+    ]
+  })
+}
+// Fase di cattura su window: arriva prima del tasto di aggiorna.js. Senza dati non salvati non fa niente.
+window.addEventListener('click', function (e) {
+  var tasto = e.target && e.target.closest ? e.target.closest('#ct-aggiorna-tasto') : null
+  if (!tasto) return
+  if (AGG.lasciaPassare) { AGG.lasciaPassare = false; return }
+  var perso = datiNonSalvatiAgg()
+  if (!perso) return
+  e.stopImmediatePropagation(); e.preventDefault()
+  avvisoAggiorna(tasto, perso)
+}, true)
+function misuraFasciaAgg() {
+  var b = document.getElementById('ct-aggiorna')
+  document.documentElement.style.setProperty('--ct-agg-h', (b ? b.offsetHeight : 0) + 'px')
+}
+if (window.MutationObserver && document.body) new MutationObserver(misuraFasciaAgg).observe(document.body, { childList: true })
+window.addEventListener('resize', misuraFasciaAgg)
 
 // ─── Menu con ricerca per scegliere un articolo ──────────────────────────────
 // contenitore: elemento dove disegnarlo. o.valore = id iniziale; o.alCambio(id)

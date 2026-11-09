@@ -300,6 +300,19 @@ td.origine { overflow-wrap: anywhere; }
   .riga .prezzo { text-align: left; width: 100%; padding-left: 64px; }
 }
 
+/* ── v7.6: fascia «🔄 Nuova versione: aggiorna» (aggiorna.js, uguale in tutte le app) ──
+   La fascia sta in cima (sticky). --ct-agg-h = sua altezza (0 se non c'è): la scrive base.js,
+   «Nuova versione». Testata, menu e finestre partono sotto la fascia: niente coperto.
+   La barra delle azioni in basso (.barra-azioni) non si tocca: la fascia è in alto. */
+#topbar { top: var(--ct-agg-h, 0px); }
+#menu { top: calc(52px + var(--ct-agg-h, 0px)); }
+.finestra-sfondo { top: var(--ct-agg-h, 0px); }
+.finestra { max-height: calc(100vh - 32px - var(--ct-agg-h, 0px)); }
+@media (max-width: 600px) {
+  .finestra { max-height: calc(100vh - var(--ct-agg-h, 0px)); height: calc(100vh - var(--ct-agg-h, 0px)); }
+}
+@media print { #ct-aggiorna { display: none !important; } }
+
 /* ── Stampa ───────────────────────────────────────────────────────────── */
 @page { size: 210mm 297mm; margin: 14mm; }
 @media print {
