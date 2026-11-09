@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.4'
+var APP_VERSIONE = '7.5'
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -34,6 +34,7 @@ var RF = {
   articoli: [],            // righe di rf_articoli + conti e prezzo usato (vedi caricaArticoli)
   fornitori: [],           // fornitori della Rubrica + dati Radar (vedi caricaFornitori)
   ditte: [],               // «Ditte da valutare»: NON fornitori, senza contatto in Rubrica
+  catalogo: { fornitori: {}, errore: null },   // vecchio catalogo: solo confronto (vedi leggiCatalogoConfronto)
   caricato: { base: false, articoli: false, fornitori: false },
   vista: 'cerca'
 }
@@ -131,7 +132,7 @@ async function login(ev) {
 async function esci() {
   try { await sb.auth.signOut() } catch (_) { /* si esce comunque */ }
   RF.utente = null; RF.ruolo = null; RF.titolare = false
-  RF.articoli = []; RF.fornitori = []
+  RF.articoli = []; RF.fornitori = []; RF.catalogo = { fornitori: {}, errore: null }
   RF.caricato = { base: false, articoli: false, fornitori: false }
   mostraLogin('')
 }
@@ -205,7 +206,43 @@ async function leggiAPagine(domanda) {
 }
 
 // Il prezzo usato: UNA regola sola, in regola_prezzo.js, lo stesso file di Preventivi. Qui non si sceglie niente.
+// Le righe arrivano già marcate con marcaConfronto: il vecchio catalogo non è mai il prezzo usato.
 function prezzoUsato(righe) { return window.CTRegolaPrezzo.scegli(righe) }
+
+// ─── Vecchio «Catalogo offerte»: solo confronto (Umberto, 9.11.2026) ──────────
+// Il fornitore del vecchio catalogo sta in pv_catalogo_confronto (tabella di Preventivi, PV_05): qui si LEGGE soltanto.
+// marcaConfronto è la stessa di Preventivi (motore/src/archivio.js): le righe di quel fornitore portano solo_confronto = true
+// e regola_prezzo.js non le sceglie MAI; si vedono solo come confronto, in grigio.
+// Lettura non riuscita, tabella che manca, zero righe (RLS): errore a schermo (RF.catalogo.errore), mai un silenzio.
+async function leggiCatalogoConfronto() {
+  var r = await conRiprova(function () { return sb.from('pv_catalogo_confronto').select('fornitore_id') })
+  if (r.error) {
+    var manca = r.error.code === '42P01' || r.error.code === 'PGRST205' || /does not exist|schema cache/i.test(String(r.error.message || ''))
+    return { fornitori: {}, errore: manca
+      ? 'Nel database manca la tabella del vecchio catalogo (pv_catalogo_confronto).'
+      : 'Non riesco a leggere il vecchio catalogo: ' + spiegaErrore(r.error) }
+  }
+  var f = {}
+  ;(r.data || []).forEach(function (x) { if (x.fornitore_id) f[x.fornitore_id] = true })
+  if (!Object.keys(f).length) return { fornitori: {}, errore: 'Vecchio catalogo: zero righe lette (accesso negato?).' }
+  return { fornitori: f, errore: null }
+}
+function marcaConfronto(righe) {
+  var f = RF.catalogo.fornitori
+  return (righe || []).map(function (r) { return f[r.fornitore_id] ? Object.assign({}, r, { solo_confronto: true }) : r })
+}
+// Il prezzo del vecchio catalogo da mostrare in grigio: il più recente, mai 0, mai una variante.
+function prezzoConfronto(righe) {
+  var mie = (righe || []).filter(function (r) { return r.solo_confronto && !r.variante && Number(r.arrivato_chf) > 0 })
+  if (!mie.length) return null
+  return window.CTRegolaPrezzo.recentiPerFornitore(mie).sort(function (a, b) { return String(b.data_prezzo || '').localeCompare(String(a.data_prezzo || '')) })[0]
+}
+// Banner rosso se il vecchio catalogo non si è letto: in Cerca e nella scheda.
+function bannerCatalogo() {
+  if (!RF.catalogo.errore) return ''
+  return banner('err', '<strong>' + esc(RF.catalogo.errore) + '</strong> Il prezzo usato potrebbe essere quello del vecchio catalogo, che non vale. ' +
+    'Esci e rientra; se continua, avvisa il titolare.')
+}
 var COLONNE_PREZZO_USATO = 'id,articolo_id,fornitore_id,fornitore_nome,arrivato_chf,netto_chf,data_prezzo,data_nel_documento,preferito,da_verificare,' +
   'variante,articolo_archiviato,fornitore_archiviato,fornitore_fuori,scaduto,vecchio,sconto_noto,solo_pacchi_interi,senza_fattore'
 
@@ -219,8 +256,10 @@ async function caricaArticoli(forza) {
     leggiAPagine(function () { return sb.from('rf_v_prezzi_attuali').select(COLONNE_PREZZO_USATO).order('id') }),
     leggiAPagine(function () { return sb.from('rf_foto_articolo').select('articolo_id,percorso').eq('archiviata', false).order('principale', { ascending: false }).order('creato_il').order('id') }),
     leggiAPagine(function () { return sb.from('rf_preferiti').select('articolo_id,fornitore_id').order('articolo_id') }),
-    conRiprova(function () { return sb.from('rf_prezzi').select('id', { count: 'exact', head: true }).eq('stato', 'attivo') })
+    conRiprova(function () { return sb.from('rf_prezzi').select('id', { count: 'exact', head: true }).eq('stato', 'attivo') }),
+    leggiCatalogoConfronto()
   ])
+  RF.catalogo = letture[5]
   var tutti = letture[0], perArticolo = {}, foto = {}, preferiti = {}
   // Con le RLS un accesso negato dà zero righe senza errore: zero articoli non può essere vero.
   if (!tutti.length) throw new Error('nessun articolo letto dal database. Non può essere zero: esci e rientra; se continua, avvisa il titolare.')
@@ -233,7 +272,10 @@ async function caricaArticoli(forza) {
   letture[2].forEach(function (f) { (foto[f.articolo_id] = foto[f.articolo_id] || []).push(f.percorso) })
   letture[3].forEach(function (x) { preferiti[x.articolo_id] = x.fornitore_id })
   tutti.forEach(function (a) {
-    var righe = perArticolo[a.id] || [], cat = categoriaDaId(a.categoria_id)
+    var righe = marcaConfronto(perArticolo[a.id]), cat = categoriaDaId(a.categoria_id)
+    var conf = prezzoConfronto(righe)
+    a.n_confronto = righe.filter(function (p) { return p.solo_confronto }).length
+    a.confronto = conf ? Number(conf.arrivato_chf) : null
     var pref = righe.filter(function (p) { return p.preferito && !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori })
     a.categoria = cat ? cat.nome : ''
     a.gruppo = cat ? cat.gruppo : ''
@@ -244,7 +286,8 @@ async function caricaArticoli(forza) {
     a.preferito_senza_fattore = pref.length > 0 && pref.every(function (p) { return p.senza_fattore })
     a.n_prezzi = righe.filter(function (p) { return !p.da_verificare && !p.fornitore_archiviato && !p.fornitore_fuori }).length
     // Fornitore da valutare (fornitore_fuori): il prezzo vale con l'avviso, come un prezzo da verificare (Umberto, 6.11.2026).
-    a.n_da_verificare = righe.filter(function (p) { return p.da_verificare || p.fornitore_fuori }).length
+    // Il vecchio catalogo non è «da verificare»: è solo confronto, non si conferma.
+    a.n_da_verificare = righe.filter(function (p) { return !p.solo_confronto && (p.da_verificare || p.fornitore_fuori) }).length
     a.n_righe_prezzo = righe.length
     a.righe_prezzo = righe
     a.usato = prezzoUsato(righe)

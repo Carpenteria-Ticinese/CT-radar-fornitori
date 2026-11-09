@@ -9,6 +9,8 @@
  * Regola:
  *   1. Righe utili: niente varianti, niente articoli archiviati, niente fornitori archiviati (= esclusi a mano da Umberto: non valgono mai),
  *      con il prezzo arrivato (fattore dell'unità presente). Umberto, 6.11.2026: «fuori» e «da valutare» non sono la stessa cosa.
+ *      Niente righe con solo_confronto = true (Umberto, 9.11.2026: i prezzi del vecchio «Catalogo offerte» non si scelgono MAI,
+ *      come un fornitore escluso; restano solo per il confronto). Chi legge le righe mette solo_confronto; senza il campo non cambia niente.
  *   2. Un prezzo 0 o negativo NON VALE MAI: è un errore di Materiali, si scarta sempre (non vince come «più conveniente»).
  *   3. Si usano SOLO i prezzi confermati di un fornitore vero. Se non ce n'è nessuno, valgono quelli «da verificare» e quelli di una ditta
  *      «da valutare» (colonna fornitore_fuori della vista: da_valutare o unita_in): il risultato porta daVerificare = true,
@@ -47,8 +49,8 @@
   function scegli(righe) {
     const tutte = righe || [];
     if (!tutte.length) return { riga: null, daVerificare: false, motivo: 'articolo non trovato in Materiali' };
-    const utili = tutte.filter(r => !r.variante && !r.articolo_archiviato && !r.fornitore_archiviato);
-    if (!utili.length) return { riga: null, daVerificare: false, motivo: 'in Materiali solo varianti o fornitori archiviati' };
+    const utili = tutte.filter(r => !r.variante && !r.articolo_archiviato && !r.fornitore_archiviato && !r.solo_confronto);
+    if (!utili.length) return { riga: null, daVerificare: false, motivo: tutte.some(r => r.solo_confronto) ? 'in Materiali solo il prezzo del vecchio catalogo (vale solo come confronto)' : 'in Materiali solo varianti o fornitori archiviati' };
     const conPrezzo = utili.filter(haPrezzo);
     if (!conPrezzo.length) return { riga: null, daVerificare: false, motivo: 'in Materiali manca la conversione dell\'unità (fattore)' };
     const validi = conPrezzo.filter(positivo);
