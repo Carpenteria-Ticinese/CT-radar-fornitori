@@ -15,6 +15,11 @@ async function disegnaImpostazioni() {
     '<div class="scheda"><h2>💱 Cambio e soglie</h2><div class="griglia">' +
       '<div><label for="im-cambio">Cambio EUR → CHF</label><input id="im-cambio" inputmode="decimal" value="' + esc(i.cambio_eur_chf) + '"></div>' +
       '<div><label for="im-cambio-data">Data del cambio</label><input id="im-cambio-data" type="date" value="' + esc(dataInput(i.cambio_data)) + '"></div>' +
+      // v7.7: EUR → CHF sempre per eccesso. Un solo valore, qui. Si vede solo dopo RF_21 (colonna passo_chf_eur).
+      ('passo_chf_eur' in i ? '<div><label for="im-passo">EUR → CHF: arrotonda per eccesso a</label><select id="im-passo">' +
+        [['0.05', '5 centesimi'], ['0.01', '1 centesimo'], ['0.10', '10 centesimi'], ['0', 'nessun arrotondamento (come prima)']].map(function (o) {
+          return '<option value="' + o[0] + '"' + (Number(i.passo_chf_eur) === Number(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>' }).join('') + '</select></div>'
+        : '<div><span class="dim">EUR → CHF per eccesso</span><br>' + tag('warn', '⏳', 'Non ancora attivo (manca RF_21)') + '</div>') +
       '<div><label for="im-usd">Cambio USD → CHF (solo costo AI)</label><input id="im-usd" inputmode="decimal" value="' + esc(i.cambio_usd_chf) + '"></div>' +
       '<div><label for="im-mesi">Prezzo vecchio dopo (mesi)</label><input id="im-mesi" inputmode="numeric" value="' + esc(i.soglia_mesi) + '"></div>' +
       '<div><label for="im-soglia">Variazione da segnalare (%)</label><input id="im-soglia" inputmode="decimal" value="' + esc(i.soglia_variazione_pct) + '"></div>' +
@@ -86,6 +91,7 @@ async function salvaImpostazioni() {
     soglia_variazione_pct: RFC.numero(el('im-soglia').value), luogo_franco: el('im-luogo').value.trim(),
     testo_lettera: el('im-lettera').value, worker_url: el('im-worker').value.trim() || null
   }
+  if (el('im-passo')) d.passo_chf_eur = Number(el('im-passo').value)
   if (!(d.cambio_eur_chf > 0) || !(d.cambio_usd_chf > 0)) return html('im-err', banner('err', 'Il cambio deve essere un numero più grande di 0.'))
   if (!d.cambio_data) return html('im-err', banner('err', 'Scrivi la data del cambio.'))
   if (!(d.soglia_mesi >= 1 && d.soglia_mesi <= 60)) return html('im-err', banner('err', 'Mesi: da 1 a 60.'))

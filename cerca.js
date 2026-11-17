@@ -227,7 +227,7 @@ async function disegnaArticolo(id) {
         '<h3 class="gruppo-prezzi">✅ Confermati, dal più conveniente (' + prezzi.length + ')</h3>' +
         (prezzi.length
           ? '<p class="aiuto">Conveniente = prezzo ARRIVATO in CHF: netto (convertito se in EUR, cambio ' +
-              RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + ') + costo di arrivo stimato del fornitore.</p>' +
+              RFC.fmt(RF.imp.cambio_eur_chf, 4) + ' del ' + RFC.fmtData(RF.imp.cambio_data) + (Number(RF.imp.passo_chf_eur) > 0 ? ', per eccesso a ' + RFC.fmt(RF.imp.passo_chf_eur) + ' CHF' : '') + ') + costo di arrivo stimato del fornitore.</p>' +
             tabellaConfronto(prezzi, art, idUsato)
           : '<p class="aiuto">Nessun prezzo confermato.</p>') +
         (daVerificare.length ? '<div id="a-daverificare">' +
@@ -267,6 +267,12 @@ async function disegnaArticolo(id) {
 
   disegnaFoto(art, foto, fotoPerse)
   collegaProve(v)
+  v.querySelectorAll('[data-cambia]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = tutti.filter(function (x) { return x.id === b.dataset.cambia })[0]
+      if (p) finestraCambiaPrezzo(p, art)
+    })
+  })
   v.querySelectorAll('[data-conferma]').forEach(function (b) {
     b.addEventListener('click', function () {
       var p = tutti.filter(function (x) { return x.id === b.dataset.conferma })[0]
@@ -323,7 +329,7 @@ function tabellaConfronto(prezzi, art, idUsato) {
         '<td data-et="Data">' + RFC.fmtData(p.data_prezzo) + (p.valido_fino ? '<br><span class="piccolo">fino al ' + RFC.fmtData(p.valido_fino) + '</span>' : '') + '</td>' +
         '<td data-et="Chi" class="nowrap">' + esc(RFC.timbro(p.creato_iniziali, p.creato_il)) + '</td>' +
         '<td data-et="Avvisi"><div class="tags">' + avvisiPrezzo(p) + '</div>' +
-          (p.documento_percorso ? '<div style="margin-top:6px">' + bottoneProva(p) + '</div>' : '') + '</td></tr>'
+          '<div class="gruppo-btn non-stampare" style="margin-top:6px">' + bottoneCambia(p) + (p.documento_percorso ? bottoneProva(p) : '') + '</div></td></tr>'
     }).join('') + '</tbody></table></div>'
 }
 
@@ -345,6 +351,7 @@ function rigaPrezzoUsato(s, art, storico, nRighe, conf) {
     '<div>Fornitore: <strong>' + esc(r.fornitore_nome) + '</strong> ' + perche + '</div>' +
     '<div>' + (dataIgnota(r.data_prezzo) ? '' : 'Data: ') + dataPrezzoTesto(r) + '</div>' +
     '<div class="origine">Da dove viene: ' + daDoveViene(origine) + '</div>' + grigio +
+    '<div class="gruppo-btn non-stampare" style="margin-top:8px">' + bottoneCambia(r, '✏️ Cambia questo prezzo') + '</div>' +
     '</div>'
 }
 
@@ -359,15 +366,17 @@ function riepilogoFornitori(tutti) {
 
 // Storico: alle righe di rf_v_storico si aggiungono origine, nota e conferma, che stanno su rf_prezzi.
 function arricchisciStorico(righe, prezziRisposta) {
-  var perId = {}, prima = {}
+  var perId = {}, prima = {}, sostituiti = {}
   ;(prezziRisposta.data || []).forEach(function (q) {
     perId[q.id] = q
     if (q.sostituito_da && q.origine_riga) prima[q.sostituito_da] = q.origine_riga
+    if (q.sostituito_da) (sostituiti[q.sostituito_da] = sostituiti[q.sostituito_da] || []).push(q.id)
   })
   return righe.map(function (x) {
     var q = perId[x.id] || {}
     return Object.assign({}, x, { origine_riga: q.origine_riga, nota: q.nota, verificato_iniziali: q.verificato_iniziali,
-                                  origine_prima: prima[x.id], origine_letta: !prezziRisposta.error })
+                                  origine_prima: prima[x.id], origine_letta: !prezziRisposta.error,
+                                  sostituisce_ids: sostituiti[x.id] || [] })
   })
 }
 
@@ -392,9 +401,20 @@ function prezzoStoricoTesto(x, art) {
     '<br>' + tag('err', '📏', 'Unità senza fattore')
 }
 
+// v7.7 (punto 46): la storia dice anche chi e quando, e prima → dopo quando un prezzo ne ha sostituito un altro dello stesso fornitore.
+function cambioStorico(x, perId) {
+  var prima = (x.sostituisce_ids || []).map(function (id) { return perId[id] })
+    .filter(function (y) { return y && y.fornitore_id === x.fornitore_id && y.netto_chf_cambio_oggi != null })[0]
+  if (!prima || x.netto_chf_cambio_oggi == null) return ''
+  var a = Number(prima.netto_chf_cambio_oggi), b = Number(x.netto_chf_cambio_oggi)
+  return '<div class="piccolo cambio-storico">Prima: ' + RFC.fmt(a) + ' → dopo: ' + RFC.fmt(b) +
+    (a ? ' (' + RFC.fmtPct(RFC.variazionePct(a, b)) + ')' : '') + '</div>'
+}
 function tabellaStorico(righe, art, idUsato) {
+  var perId = {}
+  righe.forEach(function (x) { perId[x.id] = x })
   return '<div class="tabella-wrap"><table class="tab a-schede" id="a-storico-tabella"><thead><tr>' +
-    '<th>Data</th><th>Fornitore</th><th class="num">Prezzo netto</th><th>Da dove viene</th></tr></thead><tbody>' +
+    '<th>Data</th><th>Fornitore</th><th class="num">Prezzo netto</th><th>Da dove viene</th><th>Chi e quando</th></tr></thead><tbody>' +
     righe.map(function (x) {
       return '<tr class="' + (x.stato === 'sostituito' ? 'sostituito' : '') + '">' +
         '<td data-et="Data">' + dataPrezzoTesto(x) + '</td>' +
@@ -404,8 +424,9 @@ function tabellaStorico(righe, art, idUsato) {
           (x.variante ? tag('', '🔀', 'Variante') : '') +
           (RF.catalogo.fornitori[x.fornitore_id] ? tag('', '📚', 'Vecchio catalogo: solo confronto') : '') +
           (x.da_verificare && x.stato === 'attivo' && !RF.catalogo.fornitori[x.fornitore_id] ? tag('warn', '⚠️', 'Da verificare') : '') + '</div></td>' +
-        '<td data-et="Prezzo netto" class="num">' + prezzoStoricoTesto(x, art) + '</td>' +
-        '<td data-et="Da dove viene" class="origine">' + daDoveViene(x) + '</td></tr>'
+        '<td data-et="Prezzo netto" class="num">' + prezzoStoricoTesto(x, art) + cambioStorico(x, perId) + '</td>' +
+        '<td data-et="Da dove viene" class="origine">' + daDoveViene(x) + '</td>' +
+        '<td data-et="Chi e quando" class="nowrap">' + esc(RFC.timbro(x.creato_iniziali, x.creato_il)) + '</td></tr>'
     }).join('') + '</tbody></table></div>'
 }
 
@@ -435,6 +456,7 @@ function tabellaDaVerificare(prezzi, art, soloLettura, idUsato) {
           (p.da_verificare_motivo && !confronto ? '<span class="piccolo">' + esc(p.da_verificare_motivo) + '</span>' : '') + '</td>' +
         '<td data-et="Azioni" class="non-stampare"><div class="gruppo-btn">' +
           (soloLettura || !p.da_verificare ? '' : '<button type="button" class="btn btn-piccolo btn-primario" data-conferma="' + esc(p.id) + '">' + (p.fornitore_fuori ? '✅ Scegli il fornitore' : '✅ Conferma') + '</button>') +
+          (soloLettura ? '' : bottoneCambia(p)) +
           bottoneProva(p) + '</div></td></tr>'
     }).join('') + '</tbody></table></div>'
 }
@@ -810,6 +832,126 @@ function finestraPrezzoManuale(art) {
       html(f.q('#m-err'), banner('err', esc('Non salvato: ' + spiegaErrore(e))))
     }
   }
+}
+
+// ── ✏️ Cambia prezzo (v7.7, punto 46 del 13.11) ─────────────────────────────
+// Da una FINESTRA, mai da una casella sempre aperta. Il prezzo vecchio non si tocca: nasce una versione nuova dello stesso
+// fornitore (rf_salva_import), il trigger mette la vecchia «sostituita» e la tiene nello storico.
+// La storia: chi e quando (creato_iniziali, creato_il), prima → dopo e il motivo (nota e testo del documento «a mano»).
+// Se cambiano l'unità o la conversione si corregge anche la memoria degli abbinamenti: il prossimo import non ripete l'errore.
+function bottoneCambia(p, testo) {
+  if (!p || p.solo_confronto || p.fornitore_archiviato) return ''
+  return '<button type="button" class="btn btn-piccolo" data-cambia="' + esc(p.id) + '">' + (testo || '✏️ Cambia prezzo') + '</button>'
+}
+function rincaroTotale(p) {   // rincaro del prezzo × rincari da mail di oggi, in %
+  var m = Number(p.molt_rincari) || 1
+  return RFC.arrotonda(((1 + (Number(p.rincaro) || 0) / 100) * m - 1) * 100, 4)
+}
+function finestraCambiaPrezzo(p, art) {
+  var s1 = p.sconto1_usato != null ? Number(p.sconto1_usato) : Number(p.sconto1) || 0
+  var dataVecchia = dataIgnota(p.data_prezzo) ? null : String(p.data_prezzo).slice(0, 10)
+  var oggi = RFC.oggiISO()
+  var minimo = dataVecchia && dataVecchia > oggi ? dataVecchia : null      // un prezzo con data futura si sostituisce solo da quella data
+  var prima = p.netto_chf != null ? Number(p.netto_chf) : null
+  var stato = { fattore: Number(p.fattore) || null }
+  var fin = apriFinestra({
+    titolo: '✏️ Cambia prezzo — ' + art.codice,
+    larga: true,
+    html:
+      '<p>Fornitore: <strong>' + esc(p.fornitore_nome) + '</strong>' + (p.descrizione_fornitore ? '<br><span class="dim">' + esc(p.descrizione_fornitore) + '</span>' : '') + '</p>' +
+      '<div class="banner info" id="cp-prima">Prezzo di oggi: <strong>' + (prima != null ? RFC.fmt(prima) + ' CHF / ' + esc(art.unita) : 'senza conversione') + '</strong>' +
+        ' · ' + esc(RFC.timbro(p.creato_iniziali, p.creato_il)) + '. Il prezzo di oggi resta nello storico.</div>' +
+      (Number(p.n_variazioni) ? '<p class="aiuto">Le variazioni da mail di oggi sono già dentro sconto e rincaro.</p>' : '') +
+      '<div class="griglia">' +
+        '<div><label for="cp-listino">Listino</label><input id="cp-listino" inputmode="decimal" value="' + esc(String(Number(p.listino))) + '"></div>' +
+        '<div><label for="cp-valuta">Valuta</label><select id="cp-valuta">' + ['CHF', 'EUR'].map(function (x) { return '<option' + (x === p.valuta ? ' selected' : '') + '>' + x + '</option>' }).join('') + '</select></div>' +
+        '<div><label for="cp-s1">Sconto 1 %</label><input id="cp-s1" inputmode="decimal" value="' + esc(String(s1)) + '"></div>' +
+        '<div><label for="cp-s2">Sconto 2 %</label><input id="cp-s2" inputmode="decimal" value="' + esc(String(Number(p.sconto2) || 0)) + '"></div>' +
+        '<div><label for="cp-r">Rincaro %</label><input id="cp-r" inputmode="decimal" value="' + esc(String(rincaroTotale(p))) + '"></div>' +
+        '<div><label for="cp-extra">Extra per unità</label><input id="cp-extra" inputmode="decimal" value="' + esc(String(Number(p.extra) || 0)) + '"></div>' +
+        '<div><label for="cp-unita">Unità del fornitore</label><input id="cp-unita" value="' + esc(p.unita_fornitore || art.unita) + '"></div>' +
+        '<div><label for="cp-data">Data del prezzo nuovo</label><input id="cp-data" type="date" value="' + (minimo || oggi) + '"' + (minimo ? ' min="' + minimo + '"' : ' max="' + oggi + '"') + '></div>' +
+      '</div>' +
+      '<div class="conversione" id="cp-conv"></div>' +
+      '<label for="cp-motivo">Perché lo cambi? (obbligatorio)</label>' +
+      '<input id="cp-motivo" placeholder="es. conversione sbagliata, prezzo nuovo al telefono con Rossi">' +
+      '<div id="cp-calcolo" class="banner info" style="margin-top:12px"></div><div id="cp-err"></div>',
+    pulsanti: [
+      { testo: 'Annulla', sinistra: true, azione: function (f) { f.chiudi() } },
+      { testo: '💾 Salva il prezzo nuovo', classe: 'btn-primario', id: 'cp-salva', azione: salva }
+    ]
+  })
+  function valori() {
+    return {
+      listino: RFC.numero(fin.q('#cp-listino').value), s1: RFC.numero(fin.q('#cp-s1').value) || 0,
+      s2: RFC.numero(fin.q('#cp-s2').value) || 0, r: RFC.numero(fin.q('#cp-r').value) || 0,
+      extra: RFC.numero(fin.q('#cp-extra').value) || 0, valuta: fin.q('#cp-valuta').value,
+      unita: fin.q('#cp-unita').value.trim(), fattore: stato.fattore
+    }
+  }
+  function dopo(v) {
+    if (v.listino == null) return null
+    var n = RFC.nettoBase(v.listino, v.s1, v.s2, v.r, v.extra)
+    return { netto: n, chf: RFC.nettoChf(n, v.fattore, v.valuta, RF.imp.cambio_eur_chf, RF.imp.passo_chf_eur) }
+  }
+  function ricalcola() {
+    var v = valori()
+    if (RFC.stessaUnita(v.unita, art.unita, RF.unita) && !stato.toccato) stato.fattore = stato.fattore || 1
+    html(fin.q('#cp-conv'), '📏 1 ' + esc(v.unita || '?') + ' = <strong>' + (stato.fattore ? RFC.fmt(stato.fattore, 4) + ' ' + esc(art.unita) : '? ' + esc(art.unita)) + '</strong>' +
+      (stato.fattore && !RFC.stessaUnita(v.unita, art.unita, RF.unita) ? '' : stato.fattore && stato.fattore !== 1 ? ' ' + tag('warn', '⚠️', 'Stessa unità ma conversione diversa da 1: controlla') : '') +
+      ' <button type="button" class="btn btn-piccolo" id="cp-cambia-conv">📏 Cambia conversione</button>')
+    fin.q('#cp-cambia-conv').addEventListener('click', function () {
+      finestraConversione({ unitaDoc: v.unita, unitaArt: art.unita, attuale: stato.fattore, descrizione: p.descrizione_fornitore,
+        proposta: RFC.proponiFattore(p.descrizione_fornitore, v.unita, art.unita, RF.unita),
+        alSalva: function (n) { stato.fattore = n; stato.toccato = true; fin.sporca = true; ricalcola() } })
+    })
+    var d = dopo(v)
+    if (!d) return html(fin.q('#cp-calcolo'), 'Scrivi il listino.')
+    html(fin.q('#cp-calcolo'), 'Netto: <strong>' + RFC.fmt(d.netto) + ' ' + esc(v.valuta) + '</strong>' + (v.unita ? ' / ' + esc(v.unita) : '') +
+      '<br>Prima: <strong>' + (prima != null ? RFC.fmt(prima) : '–') + '</strong> → dopo: <strong>' + (d.chf != null ? RFC.fmt(d.chf) : '–') + ' CHF / ' + esc(art.unita) + '</strong>' +
+      (prima && d.chf != null ? ' (' + RFC.fmtPct(RFC.variazionePct(prima, d.chf)) + ')' : '') +
+      (v.valuta === 'EUR' ? '<br><span class="piccolo">EUR al cambio ' + RFC.fmt(RF.imp.cambio_eur_chf, 4) +
+        (Number(RF.imp.passo_chf_eur) > 0 ? ', arrotondato per eccesso a ' + RFC.fmt(RF.imp.passo_chf_eur) + ' CHF' : '') + '</span>' : ''))
+  }
+  fin.el.querySelectorAll('.contenuto input, .contenuto select').forEach(function (i) { i.addEventListener('input', ricalcola) })
+  ricalcola()
+  async function salva(f, b) {
+    var v = valori(), d = dopo(v), motivo = f.q('#cp-motivo').value.trim(), data = f.q('#cp-data').value
+    if (v.listino == null || v.listino <= 0) return html(f.q('#cp-err'), banner('err', 'Scrivi il listino (più di 0).'))
+    if (!v.fattore || v.fattore <= 0) return html(f.q('#cp-err'), banner('err', 'Manca la conversione: premi «📏 Cambia conversione».'))
+    if (v.s1 >= 100 || v.s2 >= 100 || v.s1 < 0 || v.s2 < 0) return html(f.q('#cp-err'), banner('err', 'Gli sconti vanno da 0 a 99.'))
+    if (!motivo) return html(f.q('#cp-err'), banner('err', 'Scrivi perché lo cambi: resta nello storico.'))
+    if (!data) return html(f.q('#cp-err'), banner('err', 'Scrivi la data del prezzo.'))
+    if (minimo ? data < minimo : data > oggi) return html(f.q('#cp-err'), banner('err', minimo ? 'La data non può essere prima del ' + RFC.fmtData(minimo) + '.' : 'La data non può essere nel futuro.'))
+    if (dataVecchia && data < dataVecchia) return html(f.q('#cp-err'), banner('err', 'La data non può essere prima di quella del prezzo di oggi (' + RFC.fmtData(dataVecchia) + '): il prezzo nuovo non lo sostituirebbe.'))
+    var cambio = 'prima ' + (prima != null ? RFC.fmt(prima) : '–') + ', dopo ' + (d.chf != null ? RFC.fmt(d.chf) : '–') + ' CHF/' + art.unita
+    b.disabled = true
+    try {
+      if (!(await sessioneValida())) { b.disabled = false; return }
+      var convCambiata = v.fattore !== Number(p.fattore) || v.unita !== (p.unita_fornitore || '')
+      var r = await sb.rpc('rf_salva_import', { p: {
+        documento: { fornitore_id: p.fornitore_id, tipo: 'altro', data_documento: data, valuta: v.valuta,
+                     testo: 'Prezzo inserito a mano (cambiato): ' + cambio + '. Motivo: ' + motivo },
+        prezzi: [{ articolo_id: art.id, codice_fornitore: p.codice_fornitore, descrizione_fornitore: p.descrizione_fornitore, marca: p.marca,
+                   listino: v.listino, sconto1: p.sconto_noto === false ? 0 : v.s1, sconto2: p.sconto_noto === false ? 0 : v.s2,
+                   rincaro: p.sconto_noto === false ? 0 : v.r, extra: v.extra, sconto_noto: p.sconto_noto !== false,
+                   valuta: v.valuta, unita_fornitore: v.unita || null, fattore: v.fattore, quantita_offerta: p.quantita_offerta,
+                   data_prezzo: data, valido_fino: null, variante: !!p.variante,
+                   nota: 'Cambiato: ' + cambio + '. Motivo: ' + motivo }],
+        abbinamenti: convCambiata && (p.codice_fornitore || p.descrizione_fornitore)
+          ? [{ codice_fornitore: p.codice_fornitore || '', descrizione_norm: RFC.descrizioneNorm(p.descrizione_fornitore || ''), articolo_id: art.id,
+               unita_fornitore: v.unita || null, fattore: v.fattore }] : [],
+        preferiti: []
+      } })
+      if (r.error) throw r.error
+      f.sporca = false
+      f.chiudi(); await caricaArticoli(true); toast('💾 Prezzo cambiato: il vecchio resta nello storico'); disegnaArticolo(art.id)
+    } catch (e) {
+      b.disabled = false
+      html(f.q('#cp-err'), banner('err', esc('Non salvato: ' + spiegaErrore(e))))
+    }
+  }
+  return fin
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

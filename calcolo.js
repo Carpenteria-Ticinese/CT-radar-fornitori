@@ -146,32 +146,107 @@ var RFC = (function () {
 
   // ── Unità di misura ────────────────────────────────────────────────────────
   // L'unità scritta dal fornitore → la sigla del Radar (rf_unita), se si capisce.
+  // v7.7 (Umberto 13.11, punto 51): abbreviazioni uguali lette dai dati veri (17.11): RT = rotolo, BI = bidone, SC = scatola,
+  // QL / q.li = 100 kg, gl = a corpo, M1 = ml… Elenco completo in UNITA_ABBREVIAZIONI.md. Se l'unità è la stessa, niente domanda.
   var UNITA = [
     [/^(m2|mq|m²|qm|sqm|metri? quadr\w*)$/, 'm²'],
+    [/^(m2|mq|m²) ?(al|\/) ?mese$/, 'm² al mese'],
     [/^(m3|mc|m³|metri? cub\w*)$/, 'm³'],
     [/^(m|m1|ml|mt|lfm|metri? line\w*|metro)$/, 'ml'],
     [/^(pz|pz\.|pc|pce|pcs|st|stk|stück|n|nr|no|pezz\w*|cad|cad\.)$/, 'pz'],
     [/^(kg|kilo|chil\w*)$/, 'kg'],
-    [/^(100 ?kg|q|quintale)$/, '100 kg'],
+    [/^(100 ?kg|q|ql|q\.? ?li|qli|quintal\w*)$/, '100 kg'],
     [/^(t|to|ton|tonn\w*)$/, 't'],
     [/^(l|lt|litr\w*)$/, 'l'],
     [/^(h|ora|ore|std)$/, 'ora'],
     [/^(gg|giorn\w*|g)$/, 'giorno'],
     [/^(mese|mesi)$/, 'mese'],
+    [/^(km|chilometr\w*)$/, 'km'],
     [/^(viaggi\w*|corsa)$/, 'viaggio'],
-    [/^(a ?corpo|ac|forfait|pauschal|corpo)$/, 'a corpo'],
+    [/^(a ?corpo|ac|forfait|pauschal|corpo|gl|glob\w*)$/, 'a corpo'],
     [/^(pac|pacc\w*|pack|pa|confezione|conf)$/, 'pacco'],
-    [/^(rot|rotol\w*|roll|rl)$/, 'rotolo'],
+    [/^(rt|rot|rot\.|rotol\w*|roll|rl)$/, 'rotolo'],
+    [/^(bi|bid|bid\.|bidon\w*)$/, 'bidone'],
     [/^(sa|sacc\w*|sack)$/, 'sacco'],
-    [/^(scat\w*|box|ct|cartone)$/, 'scatola'],
+    [/^(sc|scat\w*|box|ct|cartone)$/, 'scatola'],
     [/^(set|kit)$/, 'set'],
     [/^(paio|paia|pa\.)$/, 'paio']
   ]
-  function siglaUnita(u) {
+  // elenco = le unità del Radar (rf_unita: sigla, nome): «pezzo», «tonnellata», «consegna»… si riconoscono anche così.
+  function siglaUnita(u, elenco) {
     var t = String(u == null ? '' : u).trim().toLowerCase().replace(/\s+/g, ' ')
+      .replace(/\s*\(.*\)$/, '').replace(/[?!]+$/, '').trim()      // «a corpo (quantità 1.00)», «ordine?»
     if (!t) return null
     for (var i = 0; i < UNITA.length; i++) if (UNITA[i][0].test(t)) return UNITA[i][1]
+    var l = elenco || []
+    for (var k = 0; k < l.length; k++) {
+      if (String(l[k].sigla || '').toLowerCase() === t || String(l[k].nome || '').toLowerCase() === t) return l[k].sigla
+    }
     return null
+  }
+  // L'unità del documento è la stessa dell'articolo? (alias compresi) → conversione 1, nessuna domanda.
+  function stessaUnita(uDocumento, uArticolo, elenco) {
+    if (uDocumento == null || String(uDocumento).trim() === '') return true      // il documento non dice l'unità: vale quella dell'articolo
+    var a = siglaUnita(uDocumento, elenco)
+    return a != null && a === (siglaUnita(uArticolo, elenco) || uArticolo)
+  }
+
+  // ── Proposta di conversione letta nella descrizione (v7.7, punto 50) ───────
+  // Solo una PROPOSTA: la persona la vede e la conferma. Ritorna { fattore, perche } o null.
+  // fattore = quanti <unità dell'articolo> in 1 <unità del documento>.
+  function numeroIn(s) { return numero(String(s).replace(',', '.')) }
+  function proponiFattore(descrizione, uDocumento, uArticolo, elenco) {
+    var d = String(descrizione || '').replace(/\s+/g, ' ')
+    var uf = siglaUnita(uDocumento, elenco), ua = siglaUnita(uArticolo, elenco) || uArticolo
+    if (!uf || !ua || uf === ua) return null
+    var m
+    // altezza della rete / del rotolo: «H cm 100», «h 100 cm», «altezza cm 150»
+    function altezza() {
+      var x = /\b(?:h|altezza)\.? ?(?:cm ?)?(\d+(?:[.,]\d+)?) ?(cm|mm|m)?\b/i.exec(d)
+      if (!x) return null
+      var v = numeroIn(x[1]), u = (x[2] || 'cm').toLowerCase()
+      if (!v) return null
+      return { m: u === 'mm' ? v / 1000 : u === 'm' ? v : v / 100, testo: x[0].trim() }
+    }
+    // lunghezza del rotolo: «rotolo da ml 25», «ml 5.0», «25 m/rotolo»
+    function lunghezza() {
+      var x = /rotol\w* da (?:ml|m) ?(\d+(?:[.,]\d+)?)/i.exec(d) || /\bml ?(\d+(?:[.,]\d+)?)\b/i.exec(d) || /(\d+(?:[.,]\d+)?) ?(?:ml|m) ?\/ ?(?:rt|rotolo)/i.exec(d)
+      return x ? { m: numeroIn(x[1]), testo: x[0] } : null
+    }
+    if (uf === 'rotolo' && ua === 'ml' && (m = lunghezza())) return { fattore: m.m, perche: '«' + m.testo + '»' }
+    if (uf === 'rotolo' && ua === 'm²') {
+      var mq = /(\d+(?:[.,]\d+)?) ?(?:m2|mq|m²) ?\/ ?(?:rt|rotolo)/i.exec(d)
+      if (mq) return { fattore: numeroIn(mq[1]), perche: '«' + mq[0] + '»' }
+      var L = lunghezza(), H = altezza()
+      if (L && H) return { fattore: arrotonda(L.m * H.m, 4), perche: '«' + H.testo + '» × «' + L.testo + '»' }
+    }
+    if (uf === 'm²' && ua === 'ml' && (m = altezza())) return { fattore: arrotonda(1 / m.m, 6), perche: '«' + m.testo + '»: 1 m² = ' + fmt(1 / m.m, 2) + ' ml' }
+    if (uf === 'ml' && ua === 'm²' && (m = altezza())) return { fattore: m.m, perche: '«' + m.testo + '»: 1 ml = ' + fmt(m.m, 2) + ' m²' }
+    if (ua === 'pz' && /^(rotolo|pacco|scatola|sacco|set)$/.test(uf)) {
+      m = /(\d+) ?(?:pz|pezzi|st)\.? ?\/ ?\w+/i.exec(d) || /(?:da|con) (\d+) ?(?:pz|pezzi)\b/i.exec(d)
+      if (m) return { fattore: numeroIn(m[1]), perche: '«' + m[0] + '»' }
+    }
+    if (ua === 'l' && /^(bidone|scatola|pacco)$/.test(uf) && (m = /(\d+(?:[.,]\d+)?) ?(?:lt|l|litri)\b/i.exec(d))) return { fattore: numeroIn(m[1]), perche: '«' + m[0] + '»' }
+    if (ua === 'kg' && /^(bidone|sacco|scatola|pacco)$/.test(uf) && (m = /(\d+(?:[.,]\d+)?) ?kg\b/i.exec(d))) return { fattore: numeroIn(m[1]), perche: '«' + m[0] + '»' }
+    return null
+  }
+
+  // ── EUR → CHF sempre PER ECCESSO (Umberto 16.11) ───────────────────────────
+  // Il passo vero sta in UN posto: rf_impostazioni.passo_chf_eur (RF_21), di base 0.05. Qui solo il conto, uguale al database:
+  //   ceil(round(x / passo, 9)) × passo   (il round a 9 decimali toglie il «3.4999999…» della virgola mobile)
+  // passo 0 o vuoto = come prima della v7.7 (nessun arrotondamento, 4 decimali).
+  var PASSO_CHF_DI_BASE = 0.05
+  function perEccesso(x, passo) {
+    if (x == null || !isFinite(x)) return null
+    var p = Number(passo)
+    if (!(p > 0)) return arrotonda(x, 4)
+    return arrotonda(Math.ceil(arrotonda(x / p, 9)) * p, 4)
+  }
+  // netto per unità dell'articolo in CHF, come rf_v_prezzi_attuali.netto_chf
+  function nettoChf(netto, fattore, valuta, cambio, passo) {
+    if (netto == null || !fattore) return null
+    if (valuta === 'EUR') return perEccesso(netto / fattore * (Number(cambio) || 1), passo)
+    return arrotonda(netto / fattore, 4)
   }
 
   // ── Righe dell'AI → righe del programma (regole fisse) ─────────────────────
@@ -312,7 +387,8 @@ var RFC = (function () {
     senzaAccenti: senzaAccenti, perRicerca: perRicerca, corrisponde: corrisponde,
     descrizioneNorm: descrizioneNorm, nomeNorm: nomeNorm,
     codiceValido: codiceValido, perchéCodiceNonValido: perchéCodiceNonValido, proponiCodice: proponiCodice,
-    siglaUnita: siglaUnita, preparaRighe: preparaRighe,
+    siglaUnita: siglaUnita, stessaUnita: stessaUnita, proponiFattore: proponiFattore, preparaRighe: preparaRighe,
+    PASSO_CHF_DI_BASE: PASSO_CHF_DI_BASE, perEccesso: perEccesso, nettoChf: nettoChf,
     fmt: fmt, fmtPct: fmtPct, fmtData: fmtData, timbro: timbro, oggiISO: oggiISO, dataISO: dataISO
   }
 })()

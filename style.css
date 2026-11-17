@@ -321,3 +321,14 @@ td.origine { overflow-wrap: anywhere; }
   main { padding: 0; max-width: none; }
   .scheda, .riga { box-shadow: none; }
 }
+
+/* ── v7.7: conversione dell'unità e storia dei cambi ─────────────────── */
+.conversione { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--info-bg); color: var(--info); border: 1px solid #93c5fd; }
+.conversione.manca { background: var(--warn-bg); color: var(--warn); border-color: #fcd34d; }
+.conversione .btn { margin-top: 6px; }
+.riga-campo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.riga-campo input { flex: 1 1 120px; min-width: 100px; font-size: 1.25rem; }
+.riga-campo .grande { font-size: 1.15rem; font-weight: 600; }
+.cambio-storico { margin-top: 4px; color: var(--warn); }
+details#cv-rotolo { margin-top: 12px; }
+details#cv-rotolo summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }

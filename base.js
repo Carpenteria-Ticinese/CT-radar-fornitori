@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.6'   // uguale a versione.json, data-versione e ogni ?v= in index.html
+var APP_VERSIONE = '7.7'   // uguale a versione.json, data-versione e ogni ?v= in index.html
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -724,6 +724,76 @@ function opzioniUnita(selezionata) {
   return RF.unita.filter(function (u) { return !u.archiviata || u.sigla === selezionata }).map(function (u) {
     return '<option value="' + esc(u.sigla) + '"' + (u.sigla === selezionata ? ' selected' : '') + '>' + esc(u.sigla + ' — ' + u.nome) + '</option>'
   }).join('')
+}
+
+// ─── Finestra «📏 Conversione dell'unità» (v7.7, punti 50 e 51) ───────────────
+// Una sola finestra per l'import e per «✏️ Cambia prezzo». Si può SEMPRE riaprire e cambiare.
+// o = { unitaDoc, unitaArt, attuale, proposta {fattore, perche}, descrizione, alSalva(n) }
+// Calcolo del rotolo: le lunghezze si scrivono in m, cm o mm (regola delle misure, di base m; la scelta si ricorda);
+// il risultato è sempre in m o m², come l'unità dell'articolo.
+var MISURA_CHIAVE = 'materiali.misura_conversione'
+function leggiMisura() { try { return localStorage.getItem(MISURA_CHIAVE) || 'm' } catch (e) { return 'm' } }
+function scriviMisura(u) { try { localStorage.setItem(MISURA_CHIAVE, u) } catch (e) { /* niente: vale m */ } }
+function finestraConversione(o) {
+  var ud = o.unitaDoc || '?', ua = o.unitaArt
+  var stessa = RFC.stessaUnita(o.unitaDoc, ua, RF.unita)
+  var iniziale = o.attuale || (o.proposta ? o.proposta.fattore : '')
+  var rotolo = /^(ml|m²)$/.test(ua) && !stessa
+  var mis = leggiMisura()
+  function selMisura(id) {
+    return '<select id="' + id + '" class="misura" aria-label="Unità della misura">' + ['m', 'cm', 'mm'].map(function (u) {
+      return '<option' + (u === mis ? ' selected' : '') + '>' + u + '</option>' }).join('') + '</select>'
+  }
+  var fin = apriFinestra({
+    titolo: '📏 Conversione dell\'unità',
+    html:
+      (o.descrizione ? '<p class="dim">' + esc(o.descrizione) + '</p>' : '') +
+      (stessa ? banner('info', '<strong>' + esc(ud) + ' e ' + esc(ua) + ' sono la stessa unità</strong>: di solito la conversione è 1.') : '') +
+      (o.proposta ? banner('info', 'Proposta letta nella descrizione: <strong>1 ' + esc(ud) + ' = ' + RFC.fmt(o.proposta.fattore, 4) + ' ' + esc(ua) + '</strong> (' + esc(o.proposta.perche) + ').') : '') +
+      '<label for="cv-n">1 ' + esc(ud) + ' = quanti ' + esc(ua) + '?</label>' +
+      '<div class="riga-campo"><span class="grande">1 ' + esc(ud) + ' =</span><input id="cv-n" inputmode="decimal" value="' + esc(iniziale === '' ? '' : String(iniziale)) + '"><span class="grande">' + esc(ua) + '</span></div>' +
+      '<p class="aiuto">Esempio: il prezzo è al rotolo, l\'articolo al metro, il rotolo è lungo 25 m → scrivi 25. ' +
+        'Se il prezzo è già nell\'unità dell\'articolo, scrivi 1.</p>' +
+      (rotolo ? '<details id="cv-rotolo"><summary>📐 Calcola dal rotolo o dalla rete</summary>' +
+        '<div class="griglia">' +
+          (ua === 'm²' ? '<div><label for="cv-h">Altezza (larghezza)</label><input id="cv-h" inputmode="decimal"></div>' : '') +
+          '<div><label for="cv-l">Lunghezza</label><input id="cv-l" inputmode="decimal"></div>' +
+          '<div><label for="cv-mis">Misure in</label>' + selMisura('cv-mis') + '</div>' +
+        '</div><div id="cv-calc" class="aiuto"></div>' +
+        '<button type="button" class="btn" id="cv-usa">⬆️ Usa questo numero</button></details>' : '') +
+      '<div id="cv-err"></div>',
+    pulsanti: [
+      { testo: 'Annulla', sinistra: true, azione: function (f) { f.chiudi() } },
+      { testo: '＝ È la stessa unità (1)', id: 'cv-uno', azione: function (f) { f.q('#cv-n').value = '1'; salva(f) } },
+      { testo: '💾 Salva conversione', classe: 'btn-primario', id: 'cv-salva', azione: function (f) { salva(f) } }
+    ]
+  })
+  function calcolato() {
+    if (!rotolo) return null
+    var k = { m: 1, cm: 0.01, mm: 0.001 }[fin.q('#cv-mis').value]
+    var l = RFC.numero(fin.q('#cv-l').value), h = ua === 'm²' ? RFC.numero(fin.q('#cv-h').value) : 1
+    if (!l || !h) return null
+    return RFC.arrotonda(l * k * (ua === 'm²' ? h * k : 1), 6)
+  }
+  if (rotolo) {
+    ['#cv-l', '#cv-h', '#cv-mis'].forEach(function (s) {
+      var x = fin.q(s); if (x) x.addEventListener('input', function () {
+        if (s === '#cv-mis') { mis = x.value; scriviMisura(mis) }
+        var c = calcolato()
+        html(fin.q('#cv-calc'), c ? '= <strong>' + RFC.fmt(c, 4) + ' ' + esc(ua) + '</strong> in 1 ' + esc(ud) : 'Scrivi le misure.')
+      })
+    })
+    fin.q('#cv-mis').addEventListener('change', function () { mis = this.value; scriviMisura(mis) })
+    fin.q('#cv-usa').addEventListener('click', function () { var c = calcolato(); if (c) fin.q('#cv-n').value = String(c) })
+  }
+  function salva(f) {
+    var n = RFC.numero(f.q('#cv-n').value)
+    if (!n || n <= 0) return html(f.q('#cv-err'), banner('err', 'Scrivi un numero più grande di 0.'))
+    f.sporca = false
+    f.chiudi()
+    o.alSalva(n)
+  }
+  return fin
 }
 
 // ─── Librerie caricate solo quando servono ───────────────────────────────────

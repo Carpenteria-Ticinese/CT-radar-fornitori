@@ -696,10 +696,21 @@ function calcolaRiga(r) {
   r.stato = null; r.vecchio = null; r.var = null; r.nuovoUnita = null; r.fattore = null; r.oltreSoglia = false
   if (r.ignorata) { r.stato = 'ignora'; return }
   if (!a) { r.stato = 'da_abbinare'; return }
-  if (r.fattoreManuale) r.fattore = r.fattoreManuale
-  else if (!r.unita || r.unita_sigla === a.unita) r.fattore = 1
-  else if (r.fattoreMemoria) r.fattore = Number(r.fattoreMemoria)
-  if (!r.fattore) r.avvisiRiga.push('Unità diversa (' + (r.unita || '?') + ' → ' + a.unita + '): manca il fattore di conversione')
+  // v7.7 (punti 50 e 51): stessa unità anche con le abbreviazioni (RT = rotolo, BI = bidone…) → 1, nessuna domanda.
+  // Unità diverse: si chiede sempre, con la proposta letta nella descrizione. La conversione resta SEMPRE cambiabile (📏 Cambia conversione).
+  r.stessaUnita = RFC.stessaUnita(r.unita, a.unita, RF.unita)
+  r.fonteFattore = null
+  r.fattoreProposto = r.stessaUnita ? null : RFC.proponiFattore(r.descrizione, r.unita, a.unita, RF.unita)
+  if (r.fattoreManuale) { r.fattore = r.fattoreManuale; r.fonteFattore = 'scritta da te' }
+  else if (r.stessaUnita) { r.fattore = 1; r.fonteFattore = 'stessa unità' }
+  else if (r.fattoreMemoria) { r.fattore = Number(r.fattoreMemoria); r.fonteFattore = 'dalla memoria' }
+  if (!r.fattore) r.avvisiRiga.push('Unità diversa (' + (r.unita || '?') + ' → ' + a.unita + '): manca la conversione')
+  else if (r.fonteFattore === 'dalla memoria') {
+    r.avvisiRiga.push('Controlla la conversione dalla memoria: 1 ' + (r.unita || '?') + ' = ' + RFC.fmt(r.fattore, 4) + ' ' + a.unita +
+      (r.fattoreProposto && Math.abs(r.fattoreProposto.fattore - r.fattore) > 1e-6 ? ' (la descrizione dice ' + RFC.fmt(r.fattoreProposto.fattore, 4) + ')' : ''))
+  } else if (r.stessaUnita && r.fattore !== 1) {
+    r.avvisiRiga.push('Stessa unità (' + (r.unita || '?') + ' = ' + a.unita + ') ma conversione ' + RFC.fmt(r.fattore, 4) + ': controlla')
+  }
   r.nuovoUnita = r.fattore ? RFC.arrotonda(r.netto / r.fattore, 4) : null
   var vecchi = (IMP.prezziAttivi[a.id] || []).filter(function (p) { return p.variante === r.variante })
   var v = vecchi[0]
@@ -715,6 +726,20 @@ function calcolaRiga(r) {
     r.oltreSoglia = true
     r.avvisiRiga.push('Variazione oltre il ' + RFC.fmt(soglia, 0) + '%: controlla bene')
   }
+}
+
+// La riga «📏 conversione» di una voce: sempre visibile se le unità sono diverse o se la conversione non è 1, con il tasto per cambiarla.
+function rigaConversione(r, a) {
+  if (r.stessaUnita && r.fattore === 1 && !r.fattoreManuale) {
+    return '<div class="conversione piccolo">📏 ' + esc(r.unita || a.unita) + ' = ' + esc(a.unita) + ' (stessa unità)</div>'
+  }
+  var testo = r.fattore
+    ? '📏 1 ' + esc(r.unita || '?') + ' = <strong>' + RFC.fmt(r.fattore, 4) + ' ' + esc(a.unita) + '</strong> · ' + esc(r.fonteFattore || '')
+    : '📏 <strong>Manca la conversione:</strong> 1 ' + esc(r.unita || '?') + ' = quanti ' + esc(a.unita) + '?' +
+      (r.fattoreProposto ? '<br>Proposta: ' + RFC.fmt(r.fattoreProposto.fattore, 4) + ' ' + esc(a.unita) + ' (' + esc(r.fattoreProposto.perche) + ')' : '')
+  return '<div class="conversione' + (r.fattore ? '' : ' manca') + '">' + testo +
+    '<div><button type="button" class="btn btn-piccolo' + (r.fattore ? '' : ' btn-primario') + '" data-conversione="' + r.i + '">' +
+    (r.fattore ? '📏 Cambia conversione' : '📏 Scrivi la conversione') + '</button></div></div>'
 }
 
 var STATI = {
@@ -809,8 +834,7 @@ function disegnaRigheImport() {
             var x = articoloDaId(c.id); return '<button type="button" class="btn btn-piccolo" data-cand="' + c.id + '">' + esc(x ? x.codice : '') + '</button>'
           }).join(' ') + '</div>' : '') +
           (r.candidati.length && r.candidati[0].id === r.articoloId && r.candidati[0].motivo ? '<div class="piccolo dim">AI: ' + esc(r.candidati[0].motivo) + '</div>' : '') +
-          (a && !r.fattore ? '<label class="piccolo" for="fat-' + r.i + '">1 ' + esc(r.unita || '?') + ' = quanti ' + esc(a.unita) + '?</label>' +
-            '<input id="fat-' + r.i + '" data-fattore="' + r.i + '" inputmode="decimal" placeholder="es. 3.75">' : '') +
+          (a ? rigaConversione(r, a) : '') +
         '</div>' +
         '<div><span class="et">Prezzo vecchio' + (a ? ' / ' + esc(a.unita) : '') + '</span>' + (r.vecchio != null ? prezzoTesto(r.vecchio, r.vecchioValuta) : '–') + '</div>' +
         '<div><span class="et">Prezzo nuovo' + (a ? ' / ' + esc(a.unita) : '') + '</span><strong>' + (r.nuovoUnita != null ? prezzoTesto(r.nuovoUnita, val) : prezzoTesto(r.netto, val) + ' / ' + esc(r.unita || '?')) + '</strong></div>' +
@@ -842,10 +866,12 @@ function disegnaRigheImport() {
       calcolaRiga(r); passoConferma()
     })
   })
-  box.querySelectorAll('[data-fattore]').forEach(function (inp) {
-    inp.addEventListener('change', function () {
-      var r = IMP.righe[inp.dataset.fattore], n = RFC.numero(inp.value)
-      if (n && n > 0) { r.fattoreManuale = n; calcolaRiga(r); passoConferma() }
+  box.querySelectorAll('[data-conversione]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var r = IMP.righe[b.dataset.conversione], a = r && articoloDaId(r.articoloId)
+      if (!a) return
+      finestraConversione({ unitaDoc: r.unita, unitaArt: a.unita, attuale: r.fattore, proposta: r.fattoreProposto, descrizione: r.descrizione,
+        alSalva: function (n) { r.fattoreManuale = n; r.confermata = false; calcolaRiga(r); passoConferma() } })
     })
   })
   box.querySelectorAll('[data-azione]').forEach(function (b) {
@@ -853,7 +879,7 @@ function disegnaRigheImport() {
       var r = IMP.righe[b.closest('.voce').dataset.i]
       var az = b.dataset.azione
       if (az === 'conferma') {
-        if (!r.fattore) return toast('Prima scrivi il fattore di conversione dell\'unità.')
+        if (!r.fattore) return toast('Prima scrivi la conversione dell\'unità: «📏 Scrivi la conversione».')
         r.confermata = !r.confermata
       }
       if (az === 'ignora') { r.ignorata = !r.ignorata; r.confermata = false; calcolaRiga(r) }
@@ -989,7 +1015,8 @@ async function chiediPreferiti(conf) {
       titolo: '⭐ Vuoi cambiare il preferito?', larga: true,
       html: '<p class="aiuto">Il preferito è il fornitore che consegna anche piccole quantità. Prezzi in CHF per unità dell\'articolo; «arrivato» comprende il costo di arrivo stimato.</p>' +
         vere.map(function (d) {
-          var nuovoChf = d.r.nuovoUnita != null ? d.r.nuovoUnita * cambio : null
+          // v7.7: EUR → CHF per eccesso, con il passo delle Impostazioni (come la vista del database, RF_21)
+          var nuovoChf = d.r.nuovoUnita != null ? (cambio === 1 ? d.r.nuovoUnita : RFC.perEccesso(d.r.nuovoUnita * cambio, RF.imp.passo_chf_eur)) : null
           return '<div class="voce"><strong>' + esc(d.a ? d.a.codice : '') + '</strong> — ' + esc(d.a ? d.a.descrizione : '') +
             '<ul style="margin:6px 0 6px 18px;padding:0">' +
               '<li><strong>' + esc(IMP.fornitore.nome) + '</strong> (questa offerta): ' + (nuovoChf != null ? RFC.fmt(nuovoChf) + ' CHF · arrivato ' + RFC.fmt(nuovoChf * arrivo) : '–') +
