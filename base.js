@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.7'   // uguale a versione.json, data-versione e ogni ?v= in index.html
+var APP_VERSIONE = '7.8'   // uguale a versione.json, data-versione e ogni ?v= in index.html
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -244,7 +244,7 @@ function bannerCatalogo() {
     'Esci e rientra; se continua, avvisa il titolare.')
 }
 var COLONNE_PREZZO_USATO = 'id,articolo_id,fornitore_id,fornitore_nome,arrivato_chf,netto_chf,data_prezzo,data_nel_documento,preferito,da_verificare,' +
-  'variante,articolo_archiviato,fornitore_archiviato,fornitore_fuori,scaduto,vecchio,sconto_noto,solo_pacchi_interi,senza_fattore'
+  'variante,articolo_archiviato,fornitore_archiviato,fornitore_fuori,scaduto,vecchio,sconto_noto,solo_pacchi_interi,senza_fattore,descrizione_fornitore'   // v7.8: descrizione_fornitore per «non è Flumroc»
 
 async function caricaArticoli(forza) {
   if (RF.caricato.articoli && !forza) return true

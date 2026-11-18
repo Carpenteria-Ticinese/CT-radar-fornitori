@@ -46,10 +46,24 @@ async function disegnaCerca() {
   elencoCerca()
 }
 
+// ── IN ROSSO (v7.8, Umberto 18.11.2026) ─────────────────────────────────────
+// 1. nota dell'articolo che inizia con «IN ROSSO» (la scrivono gli SQL dei doppioni, es. «+45 % sul vecchio catalogo»);
+// 2. lana di roccia che NON è Flumroc (Umberto usa solo Flumroc): il nome non dice Flumroc, oppure un prezzo vero viene da un prodotto
+//    che non è Flumroc. Solo un avviso: il prezzo non cambia.
+function notaInRosso(a) { return /^\s*IN ROSSO/i.test(a.da_verificare || '') }
+function eLanaDiRoccia(a) { return /lana\s*(di\s*)?roccia|lanaroccia|steinwolle|rockwool|flumroc/i.test((a.codice || '') + ' ' + (a.descrizione || '')) }
+function nonFlumroc(a, righe) {
+  if (!eLanaDiRoccia(a)) return false
+  if (!/flumroc/i.test((a.codice || '') + ' ' + (a.descrizione || ''))) return true
+  return (righe || []).some(function (r) { return !r.solo_confronto && !r.variante && !r.fornitore_archiviato && r.descrizione_fornitore && !/flumroc/i.test(r.descrizione_fornitore) })
+}
+var TESTO_FLUMROC = 'Lana di roccia NON Flumroc: Umberto usa solo Flumroc. Solo un avviso, il prezzo non cambia.'
 function avvisiArticolo(a) {
   var t = []
   if (a.archiviato) t.push(tag('', '📦', 'Archiviato'))
-  if (a.da_verificare) t.push(tag('warn', '❓', 'Da verificare'))
+  if (nonFlumroc(a, a.righe_prezzo)) t.push(tag('err', '🔴', 'Non è Flumroc'))
+  if (notaInRosso(a)) t.push(tag('err', '🔴', 'In rosso: ' + String(a.da_verificare).replace(/^\s*IN ROSSO:?\s*/i, '').slice(0, 60)))
+  else if (a.da_verificare) t.push(tag('warn', '❓', 'Da verificare'))
   var nv = Number(a.n_da_verificare) || 0
   if (nv) t.push(tag('warn', '⚠️', nv === 1 ? 'Prezzo da verificare' : nv + ' prezzi da verificare'))
   if (!a.n_foto && a.tipo === 'Materiale') t.push(tag('', '📷', 'Foto da aggiungere'))   // servizi e subappalti: niente foto
@@ -216,7 +230,8 @@ async function disegnaArticolo(id) {
         (art.modificato_il ? '<div><span class="dim">Modificato</span><br>' + esc(RFC.timbro(art.modificato_iniziali, art.modificato_il)) + '</div>' : '') +
       '</div>' +
       (art.note ? '<p style="margin-top:12px"><span class="dim">Note:</span> ' + esc(art.note) + '</p>' : '') +
-      (art.da_verificare ? banner('warn', '<strong>Da verificare:</strong> ' + esc(art.da_verificare)) : '') +
+      (nonFlumroc(art, tutti) ? banner('err', '🔴 <strong>' + esc(TESTO_FLUMROC) + '</strong>') : '') +
+      (art.da_verificare ? banner(notaInRosso(art) ? 'err' : 'warn', (notaInRosso(art) ? '🔴 ' : '') + '<strong>Da verificare:</strong> ' + esc(art.da_verificare)) : '') +
     '</div>' +
     '<div class="scheda" id="a-fornitori">' +
       '<div class="intestazione"><h2>🏭 Tutti i fornitori</h2></div>' +
@@ -999,6 +1014,7 @@ async function esportaListino() {
       if (v6.preferito_sconto_noto === false) avv.push('Sconto non noto')
       if (v6.preferito_solo_pacchi) avv.push('Solo pacchi interi')
       if (a.da_verificare) avv.push('Da verificare: ' + a.da_verificare)
+      if (nonFlumroc(a, a.righe_prezzo)) avv.push('NON Flumroc')
       // H e I: il prezzo della regola nuova, quello che prende l'offerta. Vuote se non c'è prezzo.
       var s = a.usato, u = s && s.riga
       righe.push([a.codice, a.descrizione, a.unita, prezzo == null ? 'MANCA' : prezzo, forn, data, avv.join(' · '),
