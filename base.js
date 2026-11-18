@@ -14,7 +14,7 @@ var URL_RUBRICA  = 'https://carpenteria-ticinese.github.io/CT-rubrica/'
 var BUCKET_FOTO  = 'rf-foto'
 var BUCKET_DOC   = 'rf-documenti'
 var LIMITE_FILE_MB = 10
-var APP_VERSIONE = '7.8'   // uguale a versione.json, data-versione e ogni ?v= in index.html
+var APP_VERSIONE = '7.9'   // uguale a versione.json, data-versione e ogni ?v= in index.html
 
 var LIBRERIE = {
   xlsx:  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -58,7 +58,8 @@ function avvisa(tipo, testo) {
 }
 var _toastTimer = null
 function toast(testo) {
-  if (/salvat[oae]\b/i.test(testo) && !/non salvat/i.test(testo)) RF.modificato = false
+  // v7.9: anche «salvati» (es. «Dati d'acquisto salvati»): prima restava «Hai cambiato dei dati e non li hai salvati»
+  if (/salvat[oaei]\b/i.test(testo) && !/non salvat/i.test(testo)) RF.modificato = false
   var t = el('toast')
   t.textContent = testo
   t.hidden = false

@@ -340,6 +340,9 @@ async function disegnaFornitore(param) {
       var fid = r ? r.id : await assicuraFornitoreRadar(k.id)
       var u = await sb.from('rf_fornitori').update(dati).eq('id', fid).select('id')
       if (u.error) throw u.error
+      // v7.9: zero righe senza errore = permesso negato (RLS), non «salvati»
+      if (!u.data || !u.data.length) throw new Error('il database non ha cambiato la scheda (permessi?).')
+      RF.modificato = false                      // v7.9: salvato davvero, uscendo niente «non li hai salvati»
       await caricaFornitori(true)
       toast('💾 Dati d\'acquisto salvati')
       disegnaFornitore(param)
